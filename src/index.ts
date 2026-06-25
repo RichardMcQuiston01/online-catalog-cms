@@ -1,6 +1,8 @@
 export * from './types/index.js';
 export * from './interfaces/index.js';
 export * from './rich-text/index.js';
+export { OnlineCatalog } from './catalog.js';
+export type { OnlineCatalogConfig } from './catalog.js';
 
 // Database adapters
 export { SQLiteAdapter } from './adapters/database/sqlite/SQLiteAdapter.js';
