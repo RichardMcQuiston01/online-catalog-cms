@@ -1,5 +1,5 @@
 {
-  "name": "online-catalog-cms",
+  "name": "@richardmcquiston01/online-catalog-cms",
   "version": "0.1.0",
   "description": "Headless TypeScript CMS engine for managing an online product catalog",
   "license": "Apache-2.0",
@@ -16,6 +16,30 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": ["dist"],
+  "keywords": [
+    "cms",
+    "catalog",
+    "headless",
+    "typescript",
+    "sqlite",
+    "postgres",
+    "mysql",
+    "mongodb",
+    "redis",
+    "s3"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RichardMcQuiston01/online-catalog-cms.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RichardMcQuiston01/online-catalog-cms/issues"
+  },
+  "homepage": "https://github.com/RichardMcQuiston01/online-catalog-cms#readme",
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
@@ -23,6 +47,7 @@
     "test:watch": "bun test --watch",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
     "demo": "bunx serve demo"
   },
   "optionalDependencies": {
@@ -41,6 +66,9 @@
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^2.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "trustedDependencies": ["@biomejs/biome"]
 }

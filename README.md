@@ -5,9 +5,9 @@ A headless TypeScript CMS library for managing an online product catalog. Ships 
 ## Install
 
 ```sh
-bun add online-catalog-cms
+bun add @richardmcquiston01/online-catalog-cms
 # or
-npm install online-catalog-cms
+npm install @richardmcquiston01/online-catalog-cms
 ```
 
 Install the driver for your chosen database:
@@ -38,7 +38,7 @@ bun add @aws-sdk/client-s3
 ## Quick Start
 
 ```ts
-import { OnlineCatalog, SQLiteAdapter, document, paragraph, text } from 'online-catalog-cms';
+import { OnlineCatalog, SQLiteAdapter, document, paragraph, text } from '@richardmcquiston01/online-catalog-cms';
 
 const catalog = new OnlineCatalog({
   db: new SQLiteAdapter({ filename: './catalog.db' }),
@@ -64,7 +64,7 @@ All adapters implement the same `DatabaseAdapter` interface, so you can swap the
 ### SQLite
 
 ```ts
-import { SQLiteAdapter } from 'online-catalog-cms';
+import { SQLiteAdapter } from '@richardmcquiston01/online-catalog-cms';
 
 const db = new SQLiteAdapter({ filename: './catalog.db' });
 // filename: ':memory:' for an in-memory database
@@ -75,7 +75,7 @@ When running in a Bun process, the adapter uses the built-in `bun:sqlite` module
 ### PostgreSQL
 
 ```ts
-import { PostgresAdapter } from 'online-catalog-cms';
+import { PostgresAdapter } from '@richardmcquiston01/online-catalog-cms';
 
 const db = new PostgresAdapter({
   connectionString: process.env.DATABASE_URL,
@@ -92,7 +92,7 @@ const db = new PostgresAdapter({
 ### MySQL / MariaDB
 
 ```ts
-import { MySQLAdapter } from 'online-catalog-cms';
+import { MySQLAdapter } from '@richardmcquiston01/online-catalog-cms';
 
 const db = new MySQLAdapter({
   host: 'localhost',
@@ -106,7 +106,7 @@ const db = new MySQLAdapter({
 ### Redis
 
 ```ts
-import { RedisAdapter } from 'online-catalog-cms';
+import { RedisAdapter } from '@richardmcquiston01/online-catalog-cms';
 
 const db = new RedisAdapter({
   url: 'redis://localhost:6379',
@@ -119,7 +119,7 @@ Redis stores products and categories as hashes (`occ:product:{id}`) with sorted-
 ### MongoDB
 
 ```ts
-import { MongoDBAdapter } from 'online-catalog-cms';
+import { MongoDBAdapter } from '@richardmcquiston01/online-catalog-cms';
 
 const db = new MongoDBAdapter({
   url: 'mongodb://localhost:27017',
@@ -136,7 +136,7 @@ Storage adapters handle image/file uploads independently of the database.
 ### Local Disk
 
 ```ts
-import { LocalStorageAdapter } from 'online-catalog-cms';
+import { LocalStorageAdapter } from '@richardmcquiston01/online-catalog-cms';
 
 const storage = new LocalStorageAdapter({
   uploadDir: '/var/www/uploads',
@@ -147,7 +147,7 @@ const storage = new LocalStorageAdapter({
 ### S3-Compatible (AWS S3, MinIO, Cloudflare R2)
 
 ```ts
-import { S3Adapter } from 'online-catalog-cms';
+import { S3Adapter } from '@richardmcquiston01/online-catalog-cms';
 
 const storage = new S3Adapter({
   bucket: 'my-catalog-images',
@@ -164,7 +164,7 @@ const storage = new S3Adapter({
 For catalogs where images are already hosted externally. Upload is not supported — pass URLs directly in `CreateImageInput.url`.
 
 ```ts
-import { ExternalURLAdapter } from 'online-catalog-cms';
+import { ExternalURLAdapter } from '@richardmcquiston01/online-catalog-cms';
 const storage = new ExternalURLAdapter();
 ```
 
@@ -291,7 +291,7 @@ Product descriptions are stored as a versioned JSON document, not raw HTML. Use 
 import {
   document, paragraph, heading, text, link,
   unorderedList, orderedList, blockquote, image,
-} from 'online-catalog-cms';
+} from '@richardmcquiston01/online-catalog-cms';
 
 const description = document([
   heading(2, [text('Features')]),

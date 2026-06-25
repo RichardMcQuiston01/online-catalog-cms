@@ -57,3 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Phase 8 — Documentation
 - Complete `README.md` with installation, quick start, all adapter configuration examples, schema management, full API reference, rich-text format reference, demo instructions, and contributing guide
 - `CHANGELOG.md` updated with all phases
+
+#### NPM Publish Preparation
+- Renamed package to scoped name `@richardmcquiston01/online-catalog-cms`
+- Added `keywords`, `repository`, `bugs`, `homepage`, and `engines` fields to `package.json`
+- Added `publishConfig: { access: "public" }` for scoped public publishing
+- Added `prepublishOnly` script to enforce typecheck → test → build gate before every publish
+- Updated all import examples and install commands in `README.md` to use the scoped package name
