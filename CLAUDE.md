@@ -12,11 +12,14 @@ Once the project is scaffolded, the standard workflow using `bun`:
 
 ```sh
 bun install          # Install dependencies
-bun run build        # Compile TypeScript
+bun run build        # Compile TypeScript (dual ESM+CJS)
 bun run typecheck    # Type-check without emitting
-bun run test         # Run all tests
-bun run lint         # Lint all files
+bun run test         # Run all tests (uses bun test natively for bun:sqlite support)
+bun run lint         # Lint all files (Biome)
+bun run lint:fix     # Auto-fix lint/format issues
 ```
+
+The test runner is `bun test` (not vitest) so that `bun:sqlite` resolves correctly in the SQLite adapter integration tests. `vitest.config.ts` is retained for IDE integration only.
 
 ## Package Design
 
