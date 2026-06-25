@@ -17,3 +17,10 @@ export type { MongoDBConfig } from './adapters/database/mongodb/MongoDBAdapter.j
 // Installer
 export { Installer } from './installer/Installer.js';
 export type { InstallOptions } from './installer/Installer.js';
+
+// Storage adapters
+export { LocalStorageAdapter } from './adapters/storage/local/LocalStorageAdapter.js';
+export type { LocalStorageConfig } from './adapters/storage/local/LocalStorageAdapter.js';
+export { S3Adapter } from './adapters/storage/s3/S3Adapter.js';
+export type { S3Config } from './adapters/storage/s3/S3Adapter.js';
+export { ExternalURLAdapter } from './adapters/storage/external/ExternalURLAdapter.js';
