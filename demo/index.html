@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Product Catalog — online-catalog-cms demo</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+
+    <header class="site-header" role="banner">
+      <div class="container">
+        <h1>Product Catalog</h1>
+        <nav aria-label="Primary navigation">
+          <ul>
+            <li><a href="index.html" aria-current="page">Products</a></li>
+            <li><a href="editor.html">Add Product</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main-content" class="container" tabindex="-1">
+      <!-- Filter bar -->
+      <section aria-labelledby="filter-heading">
+        <h2 id="filter-heading" class="sr-only">Filter products</h2>
+        <form id="filter-form" role="search" aria-label="Filter products">
+          <div class="filter-row">
+            <div class="field">
+              <label for="search-input">Search</label>
+              <input
+                type="search"
+                id="search-input"
+                name="search"
+                placeholder="Name or SKU…"
+                aria-describedby="search-hint"
+              />
+              <span id="search-hint" class="hint">Search by product name or SKU</span>
+            </div>
+            <div class="field">
+              <label for="category-select">Category</label>
+              <select id="category-select" name="category">
+                <option value="">All categories</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="min-price">Min price (cents)</label>
+              <input type="number" id="min-price" name="minPrice" min="0" step="1" />
+            </div>
+            <div class="field">
+              <label for="max-price">Max price (cents)</label>
+              <input type="number" id="max-price" name="maxPrice" min="0" step="1" />
+            </div>
+            <button type="submit" class="btn btn-primary">Filter</button>
+            <button type="button" id="reset-btn" class="btn">Reset</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Status region announced by screen readers -->
+      <div aria-live="polite" aria-atomic="true" id="status-region" class="sr-only"></div>
+
+      <!-- Product list -->
+      <section aria-labelledby="products-heading">
+        <div class="section-header">
+          <h2 id="products-heading">Products</h2>
+          <a href="editor.html" class="btn btn-primary">+ Add Product</a>
+        </div>
+        <div id="loading" class="loading-state" aria-busy="true" role="status">
+          Loading products…
+        </div>
+        <ul id="product-list" class="product-grid" role="list" aria-label="Product list" hidden>
+        </ul>
+        <p id="empty-state" class="empty-state" hidden>
+          No products found. <a href="editor.html">Add the first product.</a>
+        </p>
+      </section>
+    </main>
+
+    <footer role="contentinfo">
+      <div class="container">
+        <p>Demo for <code>online-catalog-cms</code></p>
+      </div>
+    </footer>
+
+    <script type="module" src="./src/catalog-init.js"></script>
+    <script type="module" src="./src/index.js"></script>
+  </body>
+</html>

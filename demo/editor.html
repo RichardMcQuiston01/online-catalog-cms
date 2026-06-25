@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Edit Product — online-catalog-cms demo</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+
+    <header class="site-header" role="banner">
+      <div class="container">
+        <h1>Product Catalog</h1>
+        <nav aria-label="Primary navigation">
+          <ul>
+            <li><a href="index.html">Products</a></li>
+            <li><a href="editor.html" aria-current="page">Add Product</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main-content" class="container" tabindex="-1">
+      <h2 id="form-title">Add Product</h2>
+
+      <!-- Status region announced by screen readers -->
+      <div
+        aria-live="assertive"
+        aria-atomic="true"
+        id="status-region"
+        class="sr-only"
+      ></div>
+
+      <form id="product-form" novalidate aria-labelledby="form-title">
+        <!-- Hidden id field populated when editing -->
+        <input type="hidden" id="product-id" name="id" />
+
+        <fieldset>
+          <legend>Basic information</legend>
+
+          <div class="field">
+            <label for="name-input">
+              Product name <span aria-hidden="true" class="required">*</span>
+            </label>
+            <input
+              type="text"
+              id="name-input"
+              name="name"
+              required
+              aria-required="true"
+              aria-describedby="name-error"
+              autocomplete="off"
+            />
+            <span id="name-error" role="alert" class="field-error" hidden></span>
+          </div>
+
+          <div class="field">
+            <label for="sku-input">SKU</label>
+            <input type="text" id="sku-input" name="sku" autocomplete="off" />
+          </div>
+
+          <div class="field">
+            <label for="price-input">
+              Price (cents) <span aria-hidden="true" class="required">*</span>
+            </label>
+            <input
+              type="number"
+              id="price-input"
+              name="price"
+              required
+              aria-required="true"
+              min="0"
+              step="1"
+              aria-describedby="price-hint price-error"
+            />
+            <span id="price-hint" class="hint">Enter price in cents, e.g. 1999 for $19.99</span>
+            <span id="price-error" role="alert" class="field-error" hidden></span>
+          </div>
+
+          <div class="field">
+            <label for="category-select">Category</label>
+            <select id="category-select" name="categoryId">
+              <option value="">No category</option>
+            </select>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Description</legend>
+
+          <div
+            id="editor-toolbar"
+            role="toolbar"
+            aria-label="Text formatting"
+            aria-controls="description-editor"
+          >
+            <button type="button" data-cmd="bold" aria-pressed="false" title="Bold (Ctrl+B)">
+              <span aria-hidden="true"><strong>B</strong></span>
+              <span class="sr-only">Bold</span>
+            </button>
+            <button
+              type="button"
+              data-cmd="italic"
+              aria-pressed="false"
+              title="Italic (Ctrl+I)"
+            >
+              <span aria-hidden="true"><em>I</em></span>
+              <span class="sr-only">Italic</span>
+            </button>
+            <button
+              type="button"
+              data-cmd="insertUnorderedList"
+              title="Bullet list"
+            >
+              <span aria-hidden="true">&#8226; List</span>
+              <span class="sr-only">Bullet list</span>
+            </button>
+          </div>
+          <div
+            id="description-editor"
+            contenteditable="true"
+            role="textbox"
+            aria-multiline="true"
+            aria-label="Product description"
+            aria-describedby="desc-hint"
+          ></div>
+          <span id="desc-hint" class="hint">
+            Use the toolbar above or keyboard shortcuts to format text.
+          </span>
+        </fieldset>
+
+        <fieldset>
+          <legend>Image URL</legend>
+          <div class="field">
+            <label for="image-url-input">Image URL</label>
+            <input
+              type="url"
+              id="image-url-input"
+              name="imageUrl"
+              placeholder="https://example.com/photo.jpg"
+              aria-describedby="image-hint"
+            />
+            <span id="image-hint" class="hint">Optional. Enter a publicly accessible image URL.</span>
+          </div>
+          <div class="field">
+            <label for="image-alt-input">Image alt text</label>
+            <input
+              type="text"
+              id="image-alt-input"
+              name="imageAlt"
+              aria-describedby="alt-hint"
+            />
+            <span id="alt-hint" class="hint">Describe the image for screen reader users.</span>
+          </div>
+        </fieldset>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="submit-btn">Save product</button>
+          <a href="index.html" class="btn">Cancel</a>
+        </div>
+      </form>
+    </main>
+
+    <footer role="contentinfo">
+      <div class="container">
+        <p>Demo for <code>online-catalog-cms</code></p>
+      </div>
+    </footer>
+
+    <script type="module" src="./src/catalog-init.js"></script>
+    <script type="module" src="./src/editor.js"></script>
+  </body>
+</html>
