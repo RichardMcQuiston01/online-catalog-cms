@@ -1,2 +1,2 @@
-// Public API — populated as each phase is implemented.
-// Re-export all types and the main class once they exist.
+export * from './types/index.js';
+export * from './interfaces/index.js';
