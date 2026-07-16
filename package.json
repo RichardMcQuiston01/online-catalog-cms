@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Headless TypeScript CMS engine for managing an online product catalog",
   "license": "Apache-2.0",
-  "author": "Richard McQuiston <richard@mcqsoft.com>",
+  "author": "Richard McQuiston <richard.mcquiston01@gmail.com>",
   "type": "module",
   "exports": {
     ".": {
@@ -15,7 +15,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "keywords": [
     "cms",
     "catalog",
@@ -70,5 +72,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "trustedDependencies": ["@biomejs/biome"]
+  "trustedDependencies": [
+    "@biomejs/biome"
+  ]
 }
