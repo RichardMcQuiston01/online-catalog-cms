@@ -52,7 +52,7 @@ export function htmlToRichText(html) {
     } else if (/^H[1-6]$/.test(child.nodeName)) {
       richNodes.push({
         type: 'heading',
-        level: parseInt(child.nodeName[1], 10),
+        level: Number.parseInt(child.nodeName[1], 10),
         children: parseInlines(child),
       });
     } else if (child.nodeName === 'UL' || child.nodeName === 'OL') {
@@ -106,7 +106,9 @@ export function richTextToHtml(doc) {
           return `<h${node.level}>${renderInlines(node.children)}</h${node.level}>`;
         case 'list': {
           const tag = node.ordered ? 'ol' : 'ul';
-          const items = node.items.map((i) => `<li>${renderInlines(i)}</li>`).join('');
+          const items = node.items
+            .map((i) => `<li>${renderInlines(i)}</li>`)
+            .join('');
           return `<${tag}>${items}</${tag}>`;
         }
         case 'blockquote':
@@ -151,7 +153,9 @@ export function richTextToEditableHtml(doc) {
           return `<h${node.level}>${renderInlines(node.children)}</h${node.level}>`;
         case 'list': {
           const tag = node.ordered ? 'ol' : 'ul';
-          const items = node.items.map((i) => `<li>${renderInlines(i)}</li>`).join('');
+          const items = node.items
+            .map((i) => `<li>${renderInlines(i)}</li>`)
+            .join('');
           return `<${tag}>${items}</${tag}>`;
         }
         default:
@@ -162,10 +166,7 @@ export function richTextToEditableHtml(doc) {
 }
 
 function escapeHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function escapeAttr(str) {

@@ -2,6 +2,10 @@
 
 A headless TypeScript CMS library for managing an online product catalog. Ships zero UI — it exposes a typed API you call from any framework or runtime. Plug in a database adapter and optional storage adapter, then manage products, categories, and images through a consistent interface.
 
+## Support
+
+If this library saved you some reverse-engineering, consider [buying me a coffee](https://www.paypal.com/ncp/payment/VDTESHTRR7684). ☕
+
 ## Install
 
 ```sh
@@ -38,20 +42,24 @@ bun add @aws-sdk/client-s3
 ## Quick Start
 
 ```ts
-import { OnlineCatalog, SQLiteAdapter, document, paragraph, text } from '@richardmcquiston01/online-catalog-cms';
+import {
+  OnlineCatalog,
+  SQLiteAdapter,
+  document,
+  paragraph,
+  text,
+} from "@richardmcquiston01/online-catalog-cms";
 
 const catalog = new OnlineCatalog({
-  db: new SQLiteAdapter({ filename: './catalog.db' }),
+  db: new SQLiteAdapter({ filename: "./catalog.db" }),
 });
 
 await catalog.initialize(); // runs migrations automatically
 
 const product = await catalog.products.create({
-  name: 'Acme Widget',
+  name: "Acme Widget",
   price: 1999, // stored in cents to avoid floating-point issues
-  description: document([
-    paragraph([text('A great widget.')])
-  ]),
+  description: document([paragraph([text("A great widget.")])]),
 });
 
 console.log(product.id, product.slug); // auto-generated UUID and slug
@@ -64,9 +72,9 @@ All adapters implement the same `DatabaseAdapter` interface, so you can swap the
 ### SQLite
 
 ```ts
-import { SQLiteAdapter } from '@richardmcquiston01/online-catalog-cms';
+import { SQLiteAdapter } from "@richardmcquiston01/online-catalog-cms";
 
-const db = new SQLiteAdapter({ filename: './catalog.db' });
+const db = new SQLiteAdapter({ filename: "./catalog.db" });
 // filename: ':memory:' for an in-memory database
 ```
 
@@ -75,15 +83,15 @@ When running in a Bun process, the adapter uses the built-in `bun:sqlite` module
 ### PostgreSQL
 
 ```ts
-import { PostgresAdapter } from '@richardmcquiston01/online-catalog-cms';
+import { PostgresAdapter } from "@richardmcquiston01/online-catalog-cms";
 
 const db = new PostgresAdapter({
   connectionString: process.env.DATABASE_URL,
   // or individual fields:
-  host: 'localhost',
+  host: "localhost",
   port: 5432,
-  database: 'catalog',
-  username: 'admin',
+  database: "catalog",
+  username: "admin",
   password: process.env.PG_PASSWORD,
   ssl: true, // optional
 });
@@ -92,13 +100,13 @@ const db = new PostgresAdapter({
 ### MySQL / MariaDB
 
 ```ts
-import { MySQLAdapter } from '@richardmcquiston01/online-catalog-cms';
+import { MySQLAdapter } from "@richardmcquiston01/online-catalog-cms";
 
 const db = new MySQLAdapter({
-  host: 'localhost',
+  host: "localhost",
   port: 3306,
-  database: 'catalog',
-  user: 'admin',
+  database: "catalog",
+  user: "admin",
   password: process.env.MYSQL_PASSWORD,
 });
 ```
@@ -106,11 +114,11 @@ const db = new MySQLAdapter({
 ### Redis
 
 ```ts
-import { RedisAdapter } from '@richardmcquiston01/online-catalog-cms';
+import { RedisAdapter } from "@richardmcquiston01/online-catalog-cms";
 
 const db = new RedisAdapter({
-  url: 'redis://localhost:6379',
-  keyPrefix: 'occ', // optional, default 'occ'
+  url: "redis://localhost:6379",
+  keyPrefix: "occ", // optional, default 'occ'
 });
 ```
 
@@ -119,11 +127,11 @@ Redis stores products and categories as hashes (`occ:product:{id}`) with sorted-
 ### MongoDB
 
 ```ts
-import { MongoDBAdapter } from '@richardmcquiston01/online-catalog-cms';
+import { MongoDBAdapter } from "@richardmcquiston01/online-catalog-cms";
 
 const db = new MongoDBAdapter({
-  url: 'mongodb://localhost:27017',
-  database: 'catalog',
+  url: "mongodb://localhost:27017",
+  database: "catalog",
 });
 ```
 
@@ -136,26 +144,26 @@ Storage adapters handle image/file uploads independently of the database.
 ### Local Disk
 
 ```ts
-import { LocalStorageAdapter } from '@richardmcquiston01/online-catalog-cms';
+import { LocalStorageAdapter } from "@richardmcquiston01/online-catalog-cms";
 
 const storage = new LocalStorageAdapter({
-  uploadDir: '/var/www/uploads',
-  baseUrl: 'https://example.com/uploads', // returned as the file URL
+  uploadDir: "/var/www/uploads",
+  baseUrl: "https://example.com/uploads", // returned as the file URL
 });
 ```
 
 ### S3-Compatible (AWS S3, MinIO, Cloudflare R2)
 
 ```ts
-import { S3Adapter } from '@richardmcquiston01/online-catalog-cms';
+import { S3Adapter } from "@richardmcquiston01/online-catalog-cms";
 
 const storage = new S3Adapter({
-  bucket: 'my-catalog-images',
-  region: 'us-east-1',
+  bucket: "my-catalog-images",
+  region: "us-east-1",
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   // For S3-compatible services, set a custom endpoint:
-  endpoint: 'https://my-minio.example.com',
+  endpoint: "https://my-minio.example.com",
 });
 ```
 
@@ -164,7 +172,7 @@ const storage = new S3Adapter({
 For catalogs where images are already hosted externally. Upload is not supported — pass URLs directly in `CreateImageInput.url`.
 
 ```ts
-import { ExternalURLAdapter } from '@richardmcquiston01/online-catalog-cms';
+import { ExternalURLAdapter } from "@richardmcquiston01/online-catalog-cms";
 const storage = new ExternalURLAdapter();
 ```
 
@@ -177,9 +185,9 @@ await catalog.initialize();
 // Upload a file and associate it with a product
 const image = await catalog.images.upload({
   productId: product.id,
-  file: fs.readFileSync('./photo.jpg'),
-  filename: 'photo.jpg',
-  altText: 'A widget in blue',
+  file: fs.readFileSync("./photo.jpg"),
+  filename: "photo.jpg",
+  altText: "A widget in blue",
 });
 // image.url is the returned URL from the storage adapter
 ```
@@ -200,7 +208,7 @@ Migration SQL files are included in the package under `src/adapters/database/rel
 ```ts
 const result = await catalog.installer.verify();
 if (!result.ok) {
-  console.error('Schema issues:', result.issues);
+  console.error("Schema issues:", result.issues);
 }
 ```
 
@@ -218,27 +226,27 @@ const result = await catalog.installer.install({ dryRun: true });
 ```ts
 // Create
 const product = await catalog.products.create({
-  name: 'Widget',
-  price: 999,              // cents
-  sku: 'WGT-001',          // optional
-  categoryId: 'uuid',      // optional
+  name: "Widget",
+  price: 999, // cents
+  sku: "WGT-001", // optional
+  categoryId: "uuid", // optional
   description: richTextDoc, // RichTextDocument
-  metadata: {},            // arbitrary JSON
+  metadata: {}, // arbitrary JSON
 });
 
 // Read
-const product = await catalog.products.get('uuid');
+const product = await catalog.products.get("uuid");
 
 // Update
-const updated = await catalog.products.update('uuid', { price: 1299 });
+const updated = await catalog.products.update("uuid", { price: 1299 });
 
 // Delete (also deletes associated images from storage)
-await catalog.products.delete('uuid');
+await catalog.products.delete("uuid");
 
 // List with filters
 const products = await catalog.products.list({
-  categoryId: 'uuid',
-  search: 'widget',  // searches name and SKU
+  categoryId: "uuid",
+  search: "widget", // searches name and SKU
   minPrice: 500,
   maxPrice: 2000,
 });
@@ -248,9 +256,9 @@ const products = await catalog.products.list({
 
 ```ts
 const category = await catalog.categories.create({
-  name: 'Electronics',
-  slug: 'electronics',   // optional, auto-generated if omitted
-  parentId: null,        // optional, for nested categories
+  name: "Electronics",
+  slug: "electronics", // optional, auto-generated if omitted
+  parentId: null, // optional, for nested categories
 });
 
 const children = await catalog.categories.list({ parentId: category.id });
@@ -262,8 +270,8 @@ const children = await catalog.categories.list({ parentId: category.id });
 // Associate an external URL
 const image = await catalog.images.addUrl({
   productId: product.id,
-  url: 'https://cdn.example.com/img.jpg',
-  altText: 'Product photo',
+  url: "https://cdn.example.com/img.jpg",
+  altText: "Product photo",
   sortOrder: 0, // optional
 });
 
@@ -271,9 +279,9 @@ const image = await catalog.images.addUrl({
 const image = await catalog.images.upload({
   productId: product.id,
   file: buffer,
-  filename: 'photo.jpg',
-  altText: 'Product photo',
-  contentType: 'image/jpeg',
+  filename: "photo.jpg",
+  altText: "Product photo",
+  contentType: "image/jpeg",
 });
 
 // List images for a product
@@ -289,17 +297,28 @@ Product descriptions are stored as a versioned JSON document, not raw HTML. Use 
 
 ```ts
 import {
-  document, paragraph, heading, text, link,
-  unorderedList, orderedList, blockquote, image,
-} from '@richardmcquiston01/online-catalog-cms';
+  document,
+  paragraph,
+  heading,
+  text,
+  link,
+  unorderedList,
+  orderedList,
+  blockquote,
+  image,
+} from "@richardmcquiston01/online-catalog-cms";
 
 const description = document([
-  heading(2, [text('Features')]),
+  heading(2, [text("Features")]),
   unorderedList([
-    [text('Lightweight'), text(' and durable')],
-    [link('https://example.com', [text('Specifications')])],
+    [text("Lightweight"), text(" and durable")],
+    [link("https://example.com", [text("Specifications")])],
   ]),
-  paragraph([text('Available in '), text('3 colors', { bold: true }), text('.')]),
+  paragraph([
+    text("Available in "),
+    text("3 colors", { bold: true }),
+    text("."),
+  ]),
 ]);
 ```
 
@@ -312,15 +331,26 @@ interface RichTextDocument {
 }
 
 type RichTextNode =
-  | { type: 'paragraph'; children: InlineNode[]; cssClass?: string }
-  | { type: 'heading'; level: 1|2|3|4|5|6; children: InlineNode[]; cssClass?: string }
-  | { type: 'image'; src: string; alt: string; cssClass?: string }
-  | { type: 'list'; ordered: boolean; items: InlineNode[][]; cssClass?: string }
-  | { type: 'blockquote'; children: InlineNode[]; cssClass?: string };
+  | { type: "paragraph"; children: InlineNode[]; cssClass?: string }
+  | {
+      type: "heading";
+      level: 1 | 2 | 3 | 4 | 5 | 6;
+      children: InlineNode[];
+      cssClass?: string;
+    }
+  | { type: "image"; src: string; alt: string; cssClass?: string }
+  | { type: "list"; ordered: boolean; items: InlineNode[][]; cssClass?: string }
+  | { type: "blockquote"; children: InlineNode[]; cssClass?: string };
 
 type InlineNode =
-  | { type: 'text'; text: string; bold?: boolean; italic?: boolean; code?: boolean }
-  | { type: 'link'; href: string; children: InlineNode[] };
+  | {
+      type: "text";
+      text: string;
+      bold?: boolean;
+      italic?: boolean;
+      code?: boolean;
+    }
+  | { type: "link"; href: string; children: InlineNode[] };
 ```
 
 Use `isRichTextDocument(value)` to validate an unknown value at runtime.

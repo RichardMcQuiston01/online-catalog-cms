@@ -28,8 +28,10 @@ function save(key, data) {
 function reviveDates(obj) {
   if (!obj) return obj;
   const clone = { ...obj };
-  if (typeof clone.createdAt === 'string') clone.createdAt = new Date(clone.createdAt);
-  if (typeof clone.updatedAt === 'string') clone.updatedAt = new Date(clone.updatedAt);
+  if (typeof clone.createdAt === 'string')
+    clone.createdAt = new Date(clone.createdAt);
+  if (typeof clone.updatedAt === 'string')
+    clone.updatedAt = new Date(clone.updatedAt);
   return clone;
 }
 
@@ -39,7 +41,9 @@ function reviveAll(rows) {
 }
 
 class InMemoryProductRepository {
-  constructor(private imageRepo) {}
+  constructor(imageRepo) {
+    this.imageRepo = imageRepo;
+  }
 
   async create(input) {
     const rows = load('occ_products');
@@ -81,25 +85,33 @@ class InMemoryProductRepository {
 
   async delete(id) {
     const rows = load('occ_products');
-    save('occ_products', rows.filter((r) => r.id !== id));
+    save(
+      'occ_products',
+      rows.filter((r) => r.id !== id),
+    );
     // Delete associated images
     const imgRows = load('occ_images');
-    save('occ_images', imgRows.filter((r) => r.productId !== id));
+    save(
+      'occ_images',
+      imgRows.filter((r) => r.productId !== id),
+    );
   }
 
   async list(filter) {
     let rows = load('occ_products');
-    if (filter?.categoryId) rows = rows.filter((r) => r.categoryId === filter.categoryId);
+    if (filter?.categoryId)
+      rows = rows.filter((r) => r.categoryId === filter.categoryId);
     if (filter?.search) {
       const q = filter.search.toLowerCase();
       rows = rows.filter(
         (r) =>
-          r.name.toLowerCase().includes(q) ||
-          (r.sku && r.sku.toLowerCase().includes(q)),
+          r.name.toLowerCase().includes(q) || r.sku?.toLowerCase().includes(q),
       );
     }
-    if (filter?.minPrice != null) rows = rows.filter((r) => r.price >= filter.minPrice);
-    if (filter?.maxPrice != null) rows = rows.filter((r) => r.price <= filter.maxPrice);
+    if (filter?.minPrice != null)
+      rows = rows.filter((r) => r.price >= filter.minPrice);
+    if (filter?.maxPrice != null)
+      rows = rows.filter((r) => r.price <= filter.maxPrice);
 
     const enriched = await Promise.all(
       rows.map(async (r) => {
@@ -146,7 +158,10 @@ class InMemoryCategoryRepository {
 
   async delete(id) {
     const rows = load('occ_categories');
-    save('occ_categories', rows.filter((r) => r.id !== id));
+    save(
+      'occ_categories',
+      rows.filter((r) => r.id !== id),
+    );
   }
 
   async list(filter) {
@@ -166,7 +181,9 @@ class InMemoryImageRepository {
       productId: input.productId,
       url: input.url,
       altText: input.altText,
-      sortOrder: input.sortOrder ?? rows.filter((r) => r.productId === input.productId).length,
+      sortOrder:
+        input.sortOrder ??
+        rows.filter((r) => r.productId === input.productId).length,
       createdAt: now(),
     };
     rows.push(img);
@@ -182,7 +199,10 @@ class InMemoryImageRepository {
 
   async delete(id) {
     const rows = load('occ_images');
-    save('occ_images', rows.filter((r) => r.id !== id));
+    save(
+      'occ_images',
+      rows.filter((r) => r.id !== id),
+    );
   }
 
   async listByProduct(productId) {

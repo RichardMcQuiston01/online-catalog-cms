@@ -114,18 +114,28 @@ function setupToolbar() {
 function updateToolbarState() {
   const boldBtn = toolbar.querySelector('[data-cmd="bold"]');
   const italicBtn = toolbar.querySelector('[data-cmd="italic"]');
-  if (boldBtn) boldBtn.setAttribute('aria-pressed', String(document.queryCommandState('bold')));
-  if (italicBtn) italicBtn.setAttribute('aria-pressed', String(document.queryCommandState('italic')));
+  if (boldBtn)
+    boldBtn.setAttribute(
+      'aria-pressed',
+      String(document.queryCommandState('bold')),
+    );
+  if (italicBtn)
+    italicBtn.setAttribute(
+      'aria-pressed',
+      String(document.queryCommandState('italic')),
+    );
 }
 
 function setupFormValidation() {
-  nameInput.addEventListener('blur', () => validateField(nameInput, nameError, 'Product name is required.'));
+  nameInput.addEventListener('blur', () =>
+    validateField(nameInput, nameError, 'Product name is required.'),
+  );
   priceInput.addEventListener('blur', () =>
     validateField(
       priceInput,
       priceError,
       'Price must be a whole number of cents (e.g. 1999 for $19.99).',
-      (v) => /^\d+$/.test(v.trim()) && parseInt(v.trim(), 10) >= 0,
+      (v) => /^\d+$/.test(v.trim()) && Number.parseInt(v.trim(), 10) >= 0,
     ),
   );
 }
@@ -160,12 +170,16 @@ function clearFieldError(input, errorEl) {
 }
 
 function validateForm() {
-  const nameOk = validateField(nameInput, nameError, 'Product name is required.');
+  const nameOk = validateField(
+    nameInput,
+    nameError,
+    'Product name is required.',
+  );
   const priceOk = validateField(
     priceInput,
     priceError,
     'Price must be a whole number of cents (e.g. 1999 for $19.99).',
-    (v) => /^\d+$/.test(v.trim()) && parseInt(v.trim(), 10) >= 0,
+    (v) => /^\d+$/.test(v.trim()) && Number.parseInt(v.trim(), 10) >= 0,
   );
 
   if (!nameOk) {
@@ -186,7 +200,7 @@ async function handleSubmit(adapter) {
   try {
     const description = htmlToRichText(descEditor.innerHTML);
     const categoryId = categorySelect.value || null;
-    const price = parseInt(priceInput.value.trim(), 10);
+    const price = Number.parseInt(priceInput.value.trim(), 10);
     const sku = skuInput.value.trim() || null;
 
     let product;

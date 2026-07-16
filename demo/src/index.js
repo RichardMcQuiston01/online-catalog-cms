@@ -67,10 +67,10 @@ async function renderProducts(adapter) {
   if (categoryId) filter.categoryId = categoryId;
 
   const minPrice = data.get('minPrice')?.toString();
-  if (minPrice) filter.minPrice = parseInt(minPrice, 10);
+  if (minPrice) filter.minPrice = Number.parseInt(minPrice, 10);
 
   const maxPrice = data.get('maxPrice')?.toString();
-  if (maxPrice) filter.maxPrice = parseInt(maxPrice, 10);
+  if (maxPrice) filter.maxPrice = Number.parseInt(maxPrice, 10);
 
   loadingEl.hidden = false;
   productList.hidden = true;
@@ -78,7 +78,9 @@ async function renderProducts(adapter) {
   loadingEl.setAttribute('aria-busy', 'true');
 
   try {
-    const products = await adapter.products.list(Object.keys(filter).length ? filter : undefined);
+    const products = await adapter.products.list(
+      Object.keys(filter).length ? filter : undefined,
+    );
 
     loadingEl.hidden = true;
     loadingEl.removeAttribute('aria-busy');
@@ -145,7 +147,8 @@ function buildProductCard(product) {
     const firstP = desc.querySelector('p, li');
     if (firstP) {
       const truncated = document.createElement('p');
-      truncated.style.cssText = 'overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:.875rem;color:#6c757d';
+      truncated.style.cssText =
+        'overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:.875rem;color:#6c757d';
       truncated.textContent = firstP.textContent;
       body.appendChild(truncated);
     }

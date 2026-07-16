@@ -19,7 +19,10 @@ export async function getCatalog() {
     // Seed demo categories if empty
     const cats = await _adapter.categories.list();
     if (cats.length === 0) {
-      await _adapter.categories.create({ name: 'Electronics', slug: 'electronics' });
+      await _adapter.categories.create({
+        name: 'Electronics',
+        slug: 'electronics',
+      });
       await _adapter.categories.create({ name: 'Clothing', slug: 'clothing' });
       await _adapter.categories.create({ name: 'Books', slug: 'books' });
     }
