@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `ROADMAP.md`, linked from the README, tracking outstanding work (PR CI, a pre-existing lint failure, and CI coverage for the non-SQLite database adapters).
 
+### Fixed
+- The `bun run lint` failure in `package.json` (Biome wanted the `files` and `trustedDependencies` arrays collapsed to a single line). Removed the now-resolved item from `ROADMAP.md`.
+
 ## [0.1.1] - 2026-09-22
 
 ### Added

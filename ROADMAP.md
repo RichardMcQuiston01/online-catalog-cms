@@ -6,9 +6,6 @@ Completed work is tracked in [CHANGELOG.md](CHANGELOG.md). What's left:
       version tag. There's no workflow that runs `bun run lint`, `bun run
       typecheck`, and `bun run test` on every PR, so regressions can land
       on `dev`/`main` before the next release catches them.
-- [ ] Fix the pre-existing `bun run lint` failure in `package.json` (Biome
-      wants the `files` and `trustedDependencies` arrays collapsed to a
-      single line).
 - [ ] CI coverage for the PostgreSQL/MySQL/Redis/MongoDB adapters: their
       integration tests are skipped unless the relevant env vars are set,
       so they currently only run locally against a live service, never in
