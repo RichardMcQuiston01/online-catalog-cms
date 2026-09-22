@@ -49,8 +49,7 @@
     "test:watch": "bun test --watch",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
-    "demo": "bunx serve demo"
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build"
   },
   "optionalDependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
