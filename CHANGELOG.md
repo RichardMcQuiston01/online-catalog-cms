@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `.github/workflows/publish.yml`: publishes to npm automatically when a `vX.Y.Z` tag is pushed, provided the tag's commit is on `main` and its version matches `package.json`. Runs the existing `prepublishOnly` gate (typecheck, test, build) before publishing with provenance.
+
 ### Changed
 - Moved the browser `demo/` app out of this package into its own repository, [online-catalog-cms-demo](https://github.com/RichardMcQuiston01/online-catalog-cms-demo), rebuilt there as a Vite + TypeScript SPA deployable to Vercel. Removed the `bun run demo` script and the `demo/` directory from this repo accordingly.
-- Replaced the ad-hoc PayPal donate line with the standard "Buy Me a Coffee" section (Stripe link + QR code, `donate.svg` added at the repo root), moved to the end of the README.
+- Replaced the ad-hoc PayPal donate line with the standard "Buy Me a Coffee" section (Stripe link + QR code, `donate.svg` added at the repo root), and moved it to right after "Quick Start" in the README.
+- Moved "Database Adapters" and "Storage Adapters" out of the README into [docs/ADAPTERS.md](docs/ADAPTERS.md), and "API Reference" into [docs/API.md](docs/API.md), leaving short linked pointers in their place.
+- Added a live demo link ([online-catalog-cms-demo.vercel.app](https://online-catalog-cms-demo.vercel.app/)) to the README's Demo section.
+
+### Fixed
+- The README's PostgreSQL example showed a multi-field config object (`host`/`port`/`username`/`password`/`ssl`) that no longer matches `PostgresConfig`, which only takes `{ url }` (a postgres.js connection string). Corrected in `docs/ADAPTERS.md`.
 
 ## [0.1.0] - 2026-07-15
 
