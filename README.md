@@ -357,13 +357,7 @@ Use `isRichTextDocument(value)` to validate an unknown value at runtime.
 
 ## Demo
 
-The `demo/` directory contains a standalone browser demo (no server required). It uses an in-memory localStorage-backed adapter.
-
-```sh
-bun run demo
-```
-
-Open `http://localhost:3000` in your browser. The demo is WCAG 2.1 AA compliant — it uses semantic HTML, visible focus indicators, ARIA landmarks, live regions for status announcements, and sufficient color contrast.
+A standalone, WCAG 2.1 AA compliant browser demo lives in a separate repository: [online-catalog-cms-demo](https://github.com/RichardMcQuiston01/online-catalog-cms-demo). It is a Vite + TypeScript SPA (no server required, in-memory localStorage-backed adapter) that is deployable to Vercel.
 
 ## Building & Contributing
 
