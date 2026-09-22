@@ -61,132 +61,17 @@ const product = await catalog.products.create({
 console.log(product.id, product.slug); // auto-generated UUID and slug
 ```
 
-## Database Adapters
+## Buy Me a Coffee
 
-All adapters implement the same `DatabaseAdapter` interface, so you can swap them without changing any business logic.
+If this app, code, or repository has helped you or someone you know, please consider donating. I appreciate any help to offset the costs of development and/or AI Credits.
 
-### SQLite
+[**Donate via Stripe**](https://donate.stripe.com/00w5kD3Gj1Xo9v7gVOcs800), or scan:
 
-```ts
-import { SQLiteAdapter } from "@richardmcquiston01/online-catalog-cms";
+[![Donate via Stripe](./donate.svg)](https://donate.stripe.com/00w5kD3Gj1Xo9v7gVOcs800)
 
-const db = new SQLiteAdapter({ filename: "./catalog.db" });
-// filename: ':memory:' for an in-memory database
-```
+## Adapters
 
-When running in a Bun process, the adapter uses the built-in `bun:sqlite` module. In Node.js it falls back to `better-sqlite3` (must be installed separately).
-
-### PostgreSQL
-
-```ts
-import { PostgresAdapter } from "@richardmcquiston01/online-catalog-cms";
-
-const db = new PostgresAdapter({
-  connectionString: process.env.DATABASE_URL,
-  // or individual fields:
-  host: "localhost",
-  port: 5432,
-  database: "catalog",
-  username: "admin",
-  password: process.env.PG_PASSWORD,
-  ssl: true, // optional
-});
-```
-
-### MySQL / MariaDB
-
-```ts
-import { MySQLAdapter } from "@richardmcquiston01/online-catalog-cms";
-
-const db = new MySQLAdapter({
-  host: "localhost",
-  port: 3306,
-  database: "catalog",
-  user: "admin",
-  password: process.env.MYSQL_PASSWORD,
-});
-```
-
-### Redis
-
-```ts
-import { RedisAdapter } from "@richardmcquiston01/online-catalog-cms";
-
-const db = new RedisAdapter({
-  url: "redis://localhost:6379",
-  keyPrefix: "occ", // optional, default 'occ'
-});
-```
-
-Redis stores products and categories as hashes (`occ:product:{id}`) with sorted-set indexes. Suitable for read-heavy catalogs with simple filter needs.
-
-### MongoDB
-
-```ts
-import { MongoDBAdapter } from "@richardmcquiston01/online-catalog-cms";
-
-const db = new MongoDBAdapter({
-  url: "mongodb://localhost:27017",
-  database: "catalog",
-});
-```
-
-Collections: `occ_product`, `occ_category`, `occ_image`. Indexes are created on `initialize()`.
-
-## Storage Adapters
-
-Storage adapters handle image/file uploads independently of the database.
-
-### Local Disk
-
-```ts
-import { LocalStorageAdapter } from "@richardmcquiston01/online-catalog-cms";
-
-const storage = new LocalStorageAdapter({
-  uploadDir: "/var/www/uploads",
-  baseUrl: "https://example.com/uploads", // returned as the file URL
-});
-```
-
-### S3-Compatible (AWS S3, MinIO, Cloudflare R2)
-
-```ts
-import { S3Adapter } from "@richardmcquiston01/online-catalog-cms";
-
-const storage = new S3Adapter({
-  bucket: "my-catalog-images",
-  region: "us-east-1",
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  // For S3-compatible services, set a custom endpoint:
-  endpoint: "https://my-minio.example.com",
-});
-```
-
-### External URL
-
-For catalogs where images are already hosted externally. Upload is not supported — pass URLs directly in `CreateImageInput.url`.
-
-```ts
-import { ExternalURLAdapter } from "@richardmcquiston01/online-catalog-cms";
-const storage = new ExternalURLAdapter();
-```
-
-### Using Storage With the Catalog
-
-```ts
-const catalog = new OnlineCatalog({ db, storage });
-await catalog.initialize();
-
-// Upload a file and associate it with a product
-const image = await catalog.images.upload({
-  productId: product.id,
-  file: fs.readFileSync("./photo.jpg"),
-  filename: "photo.jpg",
-  altText: "A widget in blue",
-});
-// image.url is the returned URL from the storage adapter
-```
+Database adapters (SQLite, PostgreSQL, MySQL/MariaDB, Redis, MongoDB) and storage adapters (local disk, S3-compatible, external URL) all implement the same `DatabaseAdapter` / `StorageAdapter` interfaces, so you can swap them without changing any business logic. See [docs/ADAPTERS.md](docs/ADAPTERS.md) for configuration examples for each.
 
 ## Schema Management
 
@@ -217,75 +102,7 @@ const result = await catalog.installer.install({ dryRun: true });
 
 ## API Reference
 
-### Products
-
-```ts
-// Create
-const product = await catalog.products.create({
-  name: "Widget",
-  price: 999, // cents
-  sku: "WGT-001", // optional
-  categoryId: "uuid", // optional
-  description: richTextDoc, // RichTextDocument
-  metadata: {}, // arbitrary JSON
-});
-
-// Read
-const product = await catalog.products.get("uuid");
-
-// Update
-const updated = await catalog.products.update("uuid", { price: 1299 });
-
-// Delete (also deletes associated images from storage)
-await catalog.products.delete("uuid");
-
-// List with filters
-const products = await catalog.products.list({
-  categoryId: "uuid",
-  search: "widget", // searches name and SKU
-  minPrice: 500,
-  maxPrice: 2000,
-});
-```
-
-### Categories
-
-```ts
-const category = await catalog.categories.create({
-  name: "Electronics",
-  slug: "electronics", // optional, auto-generated if omitted
-  parentId: null, // optional, for nested categories
-});
-
-const children = await catalog.categories.list({ parentId: category.id });
-```
-
-### Images
-
-```ts
-// Associate an external URL
-const image = await catalog.images.addUrl({
-  productId: product.id,
-  url: "https://cdn.example.com/img.jpg",
-  altText: "Product photo",
-  sortOrder: 0, // optional
-});
-
-// Upload via storage adapter
-const image = await catalog.images.upload({
-  productId: product.id,
-  file: buffer,
-  filename: "photo.jpg",
-  altText: "Product photo",
-  contentType: "image/jpeg",
-});
-
-// List images for a product
-const images = await catalog.images.listByProduct(product.id);
-
-// Delete (also removes from storage)
-await catalog.images.delete(image.id);
-```
+Full method signatures and examples for `catalog.products`, `catalog.categories`, and `catalog.images` live in [docs/API.md](docs/API.md).
 
 ## Rich-Text Format
 
@@ -353,6 +170,8 @@ Use `isRichTextDocument(value)` to validate an unknown value at runtime.
 
 ## Demo
 
+Try it live: **[online-catalog-cms-demo.vercel.app](https://online-catalog-cms-demo.vercel.app/)**
+
 A standalone, WCAG 2.1 AA compliant browser demo lives in a separate repository: [online-catalog-cms-demo](https://github.com/RichardMcQuiston01/online-catalog-cms-demo). It is a Vite + TypeScript SPA (no server required, in-memory localStorage-backed adapter) that is deployable to Vercel.
 
 ## Building & Contributing
@@ -384,11 +203,3 @@ Apache 2.0
 ## Copyright
 
 Copyright 2026 Richard McQuiston <richard@mcqsoft.com>
-
-## Buy Me a Coffee
-
-If this app, code, or repository has helped you or someone you know, please consider donating. I appreciate any help to offset the costs of development and/or AI Credits.
-
-[**Donate via Stripe**](https://donate.stripe.com/00w5kD3Gj1Xo9v7gVOcs800), or scan:
-
-[![Donate via Stripe](./donate.svg)](https://donate.stripe.com/00w5kD3Gj1Xo9v7gVOcs800)
