@@ -196,6 +196,8 @@ Publishing to npm is automated via `.github/workflows/publish.yml`. To cut a rel
 
 Pushing a `v*.*.*` tag whose commit is on `main` and whose version matches `package.json` triggers the workflow, which runs `bun run typecheck && bun run test && bun run build` (via `prepublishOnly`) and then `npm publish --provenance`. A tag on a commit not reachable from `main`, or one whose version doesn't match `package.json`, fails the workflow before it publishes.
 
+See [CHANGELOG.md](CHANGELOG.md) for release history and [ROADMAP.md](ROADMAP.md) for what's planned next.
+
 ## License
 
 Apache 2.0
