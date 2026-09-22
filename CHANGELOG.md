@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `.github/workflows/publish.yml`: publishes to npm automatically when a `vX.Y.Z` tag is pushed, provided the tag's commit is on `main` and its version matches `package.json`. Runs the existing `prepublishOnly` gate (typecheck, test, build) before publishing with provenance.
+
 ### Changed
 - Moved the browser `demo/` app out of this package into its own repository, [online-catalog-cms-demo](https://github.com/RichardMcQuiston01/online-catalog-cms-demo), rebuilt there as a Vite + TypeScript SPA deployable to Vercel. Removed the `bun run demo` script and the `demo/` directory from this repo accordingly.
 - Replaced the ad-hoc PayPal donate line with the standard "Buy Me a Coffee" section (Stripe link + QR code, `donate.svg` added at the repo root), moved to the end of the README.

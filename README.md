@@ -368,6 +368,15 @@ bun run lint:fix    # auto-fix lint/format issues
 
 Tests live alongside their source files (`*.test.ts`). Integration tests for SQLite run automatically; tests for PostgreSQL/MySQL/Redis/MongoDB require a live connection (they are skipped if the relevant environment variables are not set).
 
+### Releasing
+
+Publishing to npm is automated via `.github/workflows/publish.yml`. To cut a release:
+
+1. Bump `"version"` in `package.json` (following [Semantic Versioning](https://semver.org/)) and add a matching entry to `CHANGELOG.md`, on `main`.
+2. Tag that commit `vX.Y.Z` (matching the `package.json` version) and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+Pushing a `v*.*.*` tag whose commit is on `main` and whose version matches `package.json` triggers the workflow, which runs `bun run typecheck && bun run test && bun run build` (via `prepublishOnly`) and then `npm publish --provenance`. A tag on a commit not reachable from `main`, or one whose version doesn't match `package.json`, fails the workflow before it publishes.
+
 ## License
 
 Apache 2.0
