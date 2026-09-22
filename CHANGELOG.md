@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Moved the browser `demo/` app out of this package into its own repository, [online-catalog-cms-demo](https://github.com/RichardMcQuiston01/online-catalog-cms-demo), rebuilt there as a Vite + TypeScript SPA deployable to Vercel. Removed the `bun run demo` script and the `demo/` directory from this repo accordingly.
+- Replaced the ad-hoc PayPal donate line with the standard "Buy Me a Coffee" section (Stripe link + QR code, `donate.svg` added at the repo root), moved to the end of the README.
 
 ## [0.1.0] - 2026-07-15
 
