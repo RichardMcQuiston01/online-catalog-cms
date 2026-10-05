@@ -185,7 +185,7 @@ bun run lint        # lint and format check (biome)
 bun run lint:fix    # auto-fix lint/format issues
 ```
 
-Tests live alongside their source files (`*.test.ts`). Integration tests currently cover SQLite only; the PostgreSQL, MySQL, Redis and MongoDB adapters have no automated tests yet (see [ROADMAP.md](ROADMAP.md)).
+Tests live alongside their source files (`*.test.ts`). Every database adapter is meant to pass the shared contract in `src/adapters/database/adapterContract.ts`. It runs for SQLite automatically, and for Redis and MongoDB when `REDIS_URL` / `MONGODB_URL` are set (CI provides both). PostgreSQL and MySQL have no automated tests yet (see [ROADMAP.md](ROADMAP.md)).
 
 ### Releasing
 

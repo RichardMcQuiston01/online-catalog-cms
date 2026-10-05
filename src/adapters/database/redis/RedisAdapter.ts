@@ -47,12 +47,57 @@ function loadDriver(): RedisConstructor {
   }
 }
 
+/** Builds every Redis key from one namespace so the layout lives in one place. */
+class RedisKeys {
+  constructor(private readonly prefix: string) {}
+
+  product(id: string): string {
+    return `${this.prefix}:product:${id}`;
+  }
+
+  allProducts(): string {
+    return `${this.prefix}:products:all`;
+  }
+
+  productsInCategory(categoryId: string): string {
+    return `${this.prefix}:products:cat:${categoryId}`;
+  }
+
+  category(id: string): string {
+    return `${this.prefix}:category:${id}`;
+  }
+
+  allCategories(): string {
+    return `${this.prefix}:categories:all`;
+  }
+
+  image(id: string): string {
+    return `${this.prefix}:image:${id}`;
+  }
+
+  imagesOfProduct(productId: string): string {
+    return `${this.prefix}:images:product:${productId}`;
+  }
+}
+
+/** Parses a stored JSON entity and revives its `Date` fields. */
+function parseEntity<T extends object>(raw: string, dateFields: string[]): T {
+  const entity = JSON.parse(raw) as Record<string, unknown>;
+  for (const field of dateFields) {
+    entity[field] = new Date(entity[field] as string);
+  }
+  return entity as T;
+}
+
 /**
  * Redis adapter. Each entity is stored as a JSON string, with sets and sorted
- * sets as secondary indexes.
+ * sets as secondary indexes. Redis has no foreign keys, so the repositories
+ * reproduce the SQL behavior themselves: deleting a product deletes its
+ * images, and deleting a category clears it from its products and children.
+ * Multi-key writes are not transactional.
  *
- * Key layout:
- *   {prefix}:product:{id}          — product JSON
+ * Key layout (see {@link RedisKeys}):
+ *   {prefix}:product:{id}          — product JSON (without images)
  *   {prefix}:products:all          — set of all product IDs
  *   {prefix}:products:cat:{catId}  — set of product IDs by category
  *   {prefix}:category:{id}         — category JSON
@@ -62,7 +107,6 @@ function loadDriver(): RedisConstructor {
  */
 export class RedisAdapter implements DatabaseAdapter {
   private readonly client: Redis;
-  private readonly prefix: string;
 
   readonly products: ProductRepository;
   readonly categories: CategoryRepository;
@@ -71,11 +115,13 @@ export class RedisAdapter implements DatabaseAdapter {
   constructor(config: RedisConfig) {
     const RedisClass = loadDriver();
     this.client = new RedisClass(config.url);
-    this.prefix = config.keyPrefix ?? 'occ';
+    const keys = new RedisKeys(config.keyPrefix ?? 'occ');
 
-    this.products = new RedisProductRepository(this.client, this.prefix);
-    this.categories = new RedisCategoryRepository(this.client, this.prefix);
-    this.images = new RedisImageRepository(this.client, this.prefix);
+    const images = new RedisImageRepository(this.client, keys);
+    this.images = images;
+    const products = new RedisProductRepository(this.client, keys, images);
+    this.products = products;
+    this.categories = new RedisCategoryRepository(this.client, keys, products);
   }
 
   async initialize(): Promise<void> {
@@ -107,21 +153,51 @@ function matchesProductSearch(product: Product, search: string): boolean {
   );
 }
 
+function paginate<T>(items: T[], page: { limit?: number; offset?: number }) {
+  const start = page.offset ?? 0;
+  const end = page.limit !== undefined ? start + page.limit : undefined;
+  return items.slice(start, end);
+}
+
 class RedisProductRepository implements ProductRepository {
   constructor(
     private readonly client: Redis,
-    private readonly prefix: string,
+    private readonly keys: RedisKeys,
+    private readonly images: RedisImageRepository,
   ) {}
 
-  private key(id: string) {
-    return `${this.prefix}:product:${id}`;
+  /** Persists a product without its images, which live under their own keys. */
+  private async save(product: Product): Promise<void> {
+    await this.client.set(
+      this.keys.product(product.id),
+      JSON.stringify({ ...product, images: [] }),
+    );
+  }
+
+  /** Loads products by ID in one round trip, skipping IDs that no longer exist. */
+  private async loadMany(ids: string[]): Promise<Product[]> {
+    if (ids.length === 0) return [];
+
+    const rawProducts = await this.client.mget(
+      ids.map((id) => this.keys.product(id)),
+    );
+    const products = rawProducts.flatMap((raw) =>
+      raw ? [parseEntity<Product>(raw, ['createdAt', 'updatedAt'])] : [],
+    );
+
+    const imagesByProductId = await this.images.listByProducts(
+      products.map((product) => product.id),
+    );
+    for (const product of products) {
+      product.images = imagesByProductId.get(product.id) ?? [];
+    }
+    return products;
   }
 
   async create(input: CreateProductInput): Promise<Product> {
-    const id = randomUUID();
-    const now = new Date().toISOString();
+    const now = new Date();
     const product: Product = {
-      id,
+      id: randomUUID(),
       name: input.name,
       slug: input.slug ?? generateSlug(input.name),
       description: input.description,
@@ -130,54 +206,47 @@ class RedisProductRepository implements ProductRepository {
       categoryId: input.categoryId ?? null,
       images: [],
       metadata: input.metadata ?? {},
-      createdAt: new Date(now),
-      updatedAt: new Date(now),
+      createdAt: now,
+      updatedAt: now,
     };
 
-    await this.client.set(this.key(id), JSON.stringify(product));
-    await this.client.sadd(`${this.prefix}:products:all`, id);
+    await this.save(product);
+    await this.client.sadd(this.keys.allProducts(), product.id);
     if (product.categoryId) {
       await this.client.sadd(
-        `${this.prefix}:products:cat:${product.categoryId}`,
-        id,
+        this.keys.productsInCategory(product.categoryId),
+        product.id,
       );
     }
     return product;
   }
 
   async get(id: string): Promise<Product | null> {
-    const raw = await this.client.get(this.key(id));
-    if (!raw) return null;
-    const product = JSON.parse(raw) as Product;
-    product.createdAt = new Date(product.createdAt);
-    product.updatedAt = new Date(product.updatedAt);
-    return product;
+    const [product] = await this.loadMany([id]);
+    return product ?? null;
   }
 
   async update(id: string, input: UpdateProductInput): Promise<Product> {
     const existing = await this.get(id);
     if (!existing) throw new Error(`Product not found: ${id}`);
 
-    const oldCategoryId = existing.categoryId;
-
     const updated: Product = {
       ...existing,
       ...mergeProductUpdate(existing, input),
       updatedAt: new Date(),
     };
+    await this.save(updated);
 
-    await this.client.set(this.key(id), JSON.stringify(updated));
-
-    if (oldCategoryId !== updated.categoryId) {
-      if (oldCategoryId) {
+    if (existing.categoryId !== updated.categoryId) {
+      if (existing.categoryId) {
         await this.client.srem(
-          `${this.prefix}:products:cat:${oldCategoryId}`,
+          this.keys.productsInCategory(existing.categoryId),
           id,
         );
       }
       if (updated.categoryId) {
         await this.client.sadd(
-          `${this.prefix}:products:cat:${updated.categoryId}`,
+          this.keys.productsInCategory(updated.categoryId),
           id,
         );
       }
@@ -188,85 +257,107 @@ class RedisProductRepository implements ProductRepository {
 
   async delete(id: string): Promise<void> {
     const existing = await this.get(id);
-    await this.client.del(this.key(id));
-    await this.client.srem(`${this.prefix}:products:all`, id);
-    if (existing?.categoryId) {
+    if (!existing) return;
+
+    for (const image of existing.images) {
+      await this.images.delete(image.id);
+    }
+    await this.client.del(this.keys.product(id));
+    await this.client.srem(this.keys.allProducts(), id);
+    if (existing.categoryId) {
       await this.client.srem(
-        `${this.prefix}:products:cat:${existing.categoryId}`,
+        this.keys.productsInCategory(existing.categoryId),
         id,
       );
     }
   }
 
   async list(filter: ProductFilter = {}): Promise<Product[]> {
-    let ids: string[];
+    const ids = await this.candidateIds(filter.categoryId);
 
-    if (filter.categoryId !== undefined) {
-      ids = await this.client.smembers(
-        `${this.prefix}:products:cat:${filter.categoryId}`,
-      );
-    } else {
-      ids = await this.client.smembers(`${this.prefix}:products:all`);
-    }
-
-    const products: Product[] = [];
-    for (const id of ids) {
-      const product = await this.get(id);
-      if (!product) continue;
-
-      if (filter.search && !matchesProductSearch(product, filter.search))
-        continue;
-      if (filter.minPrice !== undefined && product.price < filter.minPrice)
-        continue;
-      if (filter.maxPrice !== undefined && product.price > filter.maxPrice)
-        continue;
-
-      products.push(product);
-    }
+    const products = (await this.loadMany(ids)).filter(
+      (product) =>
+        (!filter.search || matchesProductSearch(product, filter.search)) &&
+        (filter.minPrice === undefined || product.price >= filter.minPrice) &&
+        (filter.maxPrice === undefined || product.price <= filter.maxPrice),
+    );
 
     products.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return paginate(products, filter);
+  }
 
-    const start = filter.offset ?? 0;
-    const end = filter.limit !== undefined ? start + filter.limit : undefined;
-    return products.slice(start, end);
+  /** Narrows by category via its index; `null` (uncategorized) has none. */
+  private async candidateIds(categoryId?: string | null): Promise<string[]> {
+    if (categoryId === undefined) {
+      return this.client.smembers(this.keys.allProducts());
+    }
+    if (categoryId === null) {
+      const all = await this.loadMany(
+        await this.client.smembers(this.keys.allProducts()),
+      );
+      return all.filter((p) => p.categoryId === null).map((p) => p.id);
+    }
+    return this.client.smembers(this.keys.productsInCategory(categoryId));
+  }
+
+  /** Detaches every product from a deleted category (SQL `ON DELETE SET NULL`). */
+  async clearCategory(categoryId: string): Promise<void> {
+    const ids = await this.client.smembers(
+      this.keys.productsInCategory(categoryId),
+    );
+    for (const product of await this.loadMany(ids)) {
+      await this.save({ ...product, categoryId: null });
+    }
+    await this.client.del(this.keys.productsInCategory(categoryId));
   }
 }
 
 class RedisCategoryRepository implements CategoryRepository {
   constructor(
     private readonly client: Redis,
-    private readonly prefix: string,
+    private readonly keys: RedisKeys,
+    private readonly products: RedisProductRepository,
   ) {}
 
-  private key(id: string) {
-    return `${this.prefix}:category:${id}`;
+  private async save(category: Category): Promise<void> {
+    await this.client.set(
+      this.keys.category(category.id),
+      JSON.stringify(category),
+    );
+  }
+
+  private async loadAll(): Promise<Category[]> {
+    const ids = await this.client.smembers(this.keys.allCategories());
+    if (ids.length === 0) return [];
+
+    const rawCategories = await this.client.mget(
+      ids.map((id) => this.keys.category(id)),
+    );
+    return rawCategories.flatMap((raw) =>
+      raw ? [parseEntity<Category>(raw, ['createdAt', 'updatedAt'])] : [],
+    );
   }
 
   async create(input: CreateCategoryInput): Promise<Category> {
-    const id = randomUUID();
-    const now = new Date().toISOString();
+    const now = new Date();
     const category: Category = {
-      id,
+      id: randomUUID(),
       name: input.name,
       slug: input.slug ?? generateSlug(input.name),
       parentId: input.parentId ?? null,
       metadata: input.metadata ?? {},
-      createdAt: new Date(now),
-      updatedAt: new Date(now),
+      createdAt: now,
+      updatedAt: now,
     };
 
-    await this.client.set(this.key(id), JSON.stringify(category));
-    await this.client.sadd(`${this.prefix}:categories:all`, id);
+    await this.save(category);
+    await this.client.sadd(this.keys.allCategories(), category.id);
     return category;
   }
 
   async get(id: string): Promise<Category | null> {
-    const raw = await this.client.get(this.key(id));
-    if (!raw) return null;
-    const category = JSON.parse(raw) as Category;
-    category.createdAt = new Date(category.createdAt);
-    category.updatedAt = new Date(category.updatedAt);
-    return category;
+    const raw = await this.client.get(this.keys.category(id));
+    return raw ? parseEntity<Category>(raw, ['createdAt', 'updatedAt']) : null;
   }
 
   async update(id: string, input: UpdateCategoryInput): Promise<Category> {
@@ -278,105 +369,118 @@ class RedisCategoryRepository implements CategoryRepository {
       ...mergeCategoryUpdate(existing, input),
       updatedAt: new Date(),
     };
-
-    await this.client.set(this.key(id), JSON.stringify(updated));
+    await this.save(updated);
     return updated;
   }
 
   async delete(id: string): Promise<void> {
-    await this.client.del(this.key(id));
-    await this.client.srem(`${this.prefix}:categories:all`, id);
+    await this.products.clearCategory(id);
+    for (const child of await this.loadAll()) {
+      if (child.parentId === id) {
+        await this.save({ ...child, parentId: null });
+      }
+    }
+    await this.client.del(this.keys.category(id));
+    await this.client.srem(this.keys.allCategories(), id);
   }
 
   async list(filter: CategoryFilter = {}): Promise<Category[]> {
-    const ids = await this.client.smembers(`${this.prefix}:categories:all`);
-    const categories: Category[] = [];
-
-    for (const id of ids) {
-      const category = await this.get(id);
-      if (!category) continue;
-
-      if (filter.parentId !== undefined) {
-        if (category.parentId !== filter.parentId) continue;
-      }
-      if (
-        filter.search &&
-        !category.name.toLowerCase().includes(filter.search.toLowerCase())
-      )
-        continue;
-
-      categories.push(category);
-    }
+    const needle = filter.search?.toLowerCase();
+    const categories = (await this.loadAll()).filter(
+      (category) =>
+        (filter.parentId === undefined ||
+          category.parentId === filter.parentId) &&
+        (!needle || category.name.toLowerCase().includes(needle)),
+    );
 
     categories.sort((a, b) => a.name.localeCompare(b.name));
-
-    const start = filter.offset ?? 0;
-    const end = filter.limit !== undefined ? start + filter.limit : undefined;
-    return categories.slice(start, end);
+    return paginate(categories, filter);
   }
 }
 
 class RedisImageRepository implements ImageRepository {
   constructor(
     private readonly client: Redis,
-    private readonly prefix: string,
+    private readonly keys: RedisKeys,
   ) {}
 
-  private key(id: string) {
-    return `${this.prefix}:image:${id}`;
-  }
-
   async create(input: CreateImageInput): Promise<Image> {
-    const id = randomUUID();
-    const now = new Date().toISOString();
     const image: Image = {
-      id,
+      id: randomUUID(),
       productId: input.productId,
       url: input.url,
       altText: input.altText,
       sortOrder: input.sortOrder ?? 0,
-      createdAt: new Date(now),
+      createdAt: new Date(),
     };
 
-    await this.client.set(this.key(id), JSON.stringify(image));
+    await this.client.set(this.keys.image(image.id), JSON.stringify(image));
     await this.client.zadd(
-      `${this.prefix}:images:product:${input.productId}`,
+      this.keys.imagesOfProduct(input.productId),
       image.sortOrder,
-      id,
+      image.id,
     );
     return image;
   }
 
   async get(id: string): Promise<Image | null> {
-    const raw = await this.client.get(this.key(id));
-    if (!raw) return null;
-    const image = JSON.parse(raw) as Image;
-    image.createdAt = new Date(image.createdAt);
-    return image;
+    const raw = await this.client.get(this.keys.image(id));
+    return raw ? parseEntity<Image>(raw, ['createdAt']) : null;
   }
 
   async delete(id: string): Promise<void> {
     const image = await this.get(id);
-    await this.client.del(this.key(id));
+    await this.client.del(this.keys.image(id));
     if (image) {
-      await this.client.zrem(
-        `${this.prefix}:images:product:${image.productId}`,
-        id,
-      );
+      await this.client.zrem(this.keys.imagesOfProduct(image.productId), id);
     }
   }
 
   async listByProduct(productId: string): Promise<Image[]> {
-    const ids = await this.client.zrange(
-      `${this.prefix}:images:product:${productId}`,
-      0,
-      -1,
-    );
-    const images: Image[] = [];
-    for (const id of ids) {
-      const image = await this.get(id);
-      if (image) images.push(image);
+    const imagesByProductId = await this.listByProducts([productId]);
+    return imagesByProductId.get(productId) ?? [];
+  }
+
+  /** Loads images for many products using pipelined reads (avoids N+1). */
+  async listByProducts(productIds: string[]): Promise<Map<string, Image[]>> {
+    const imagesByProductId = new Map<string, Image[]>();
+    if (productIds.length === 0) return imagesByProductId;
+
+    const pipeline = this.client.pipeline();
+    for (const productId of productIds) {
+      pipeline.zrange(this.keys.imagesOfProduct(productId), 0, -1);
     }
-    return images;
+    const results = (await pipeline.exec()) ?? [];
+
+    const imageIdsByProductId = new Map<string, string[]>();
+    productIds.forEach((productId, index) => {
+      const [error, ids] = results[index] ?? [null, []];
+      if (error) throw error;
+      imageIdsByProductId.set(productId, ids as string[]);
+    });
+
+    const allImageIds = [...imageIdsByProductId.values()].flat();
+    if (allImageIds.length === 0) return imagesByProductId;
+
+    const rawImages = await this.client.mget(
+      allImageIds.map((id) => this.keys.image(id)),
+    );
+    const imagesById = new Map<string, Image>();
+    for (const raw of rawImages) {
+      if (!raw) continue;
+      const image = parseEntity<Image>(raw, ['createdAt']);
+      imagesById.set(image.id, image);
+    }
+
+    for (const [productId, ids] of imageIdsByProductId) {
+      imagesByProductId.set(
+        productId,
+        ids.flatMap((id) => {
+          const image = imagesById.get(id);
+          return image ? [image] : [];
+        }),
+      );
+    }
+    return imagesByProductId;
   }
 }

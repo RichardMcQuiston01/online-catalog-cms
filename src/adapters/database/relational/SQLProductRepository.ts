@@ -103,7 +103,9 @@ export class SQLProductRepository implements ProductRepository {
     const conditions: string[] = [];
     const params: unknown[] = [];
 
-    if (filter.categoryId !== undefined) {
+    if (filter.categoryId === null) {
+      conditions.push('category_id IS NULL');
+    } else if (filter.categoryId !== undefined) {
       conditions.push('category_id = ?');
       params.push(filter.categoryId);
     }
