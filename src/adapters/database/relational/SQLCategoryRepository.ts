@@ -6,9 +6,11 @@ import type {
   CreateCategoryInput,
   UpdateCategoryInput,
 } from '../../../types/category.js';
+import { mergeCategoryUpdate } from '../../../utils/merge.js';
 import { generateSlug } from '../../../utils/slug.js';
 import type { SQLRunner } from './BaseSQLAdapter.js';
 import { type CategoryRow, categoryFromRow } from './rowMappers.js';
+import { buildPaginationClause, buildWhereClause } from './sqlHelpers.js';
 
 export class SQLCategoryRepository implements CategoryRepository {
   constructor(private readonly db: SQLRunner) {}
@@ -50,6 +52,7 @@ export class SQLCategoryRepository implements CategoryRepository {
     const existing = await this.get(id);
     if (!existing) throw new Error(`Category not found: ${id}`);
 
+    const fields = mergeCategoryUpdate(existing, input);
     const now = new Date().toISOString();
     await this.db.run(
       `UPDATE occ_category SET
@@ -60,10 +63,10 @@ export class SQLCategoryRepository implements CategoryRepository {
          updated_at = ?
        WHERE id = ?`,
       [
-        input.name ?? existing.name,
-        input.slug ?? existing.slug,
-        input.parentId !== undefined ? input.parentId : existing.parentId,
-        JSON.stringify(input.metadata ?? existing.metadata),
+        fields.name,
+        fields.slug,
+        fields.parentId,
+        JSON.stringify(fields.metadata),
         now,
         id,
       ],
@@ -96,13 +99,8 @@ export class SQLCategoryRepository implements CategoryRepository {
       params.push(`%${filter.search}%`);
     }
 
-    const where =
-      conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const limit = filter.limit !== undefined ? `LIMIT ${filter.limit}` : '';
-    const offset = filter.offset !== undefined ? `OFFSET ${filter.offset}` : '';
-
     const rows = await this.db.all<CategoryRow>(
-      `SELECT * FROM occ_category ${where} ORDER BY name ASC ${limit} ${offset}`,
+      `SELECT * FROM occ_category ${buildWhereClause(conditions)} ORDER BY name ASC ${buildPaginationClause(filter)}`,
       params,
     );
 

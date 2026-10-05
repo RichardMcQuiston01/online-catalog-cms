@@ -1,13 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type {
   CategoryRepository,
   DatabaseAdapter,
   ImageRepository,
   ProductRepository,
-  VerificationResult,
 } from '../../../interfaces/DatabaseAdapter.js';
 import {
   BaseSQLAdapter,
@@ -16,6 +12,7 @@ import {
 import { SQLCategoryRepository } from '../relational/SQLCategoryRepository.js';
 import { SQLImageRepository } from '../relational/SQLImageRepository.js';
 import { SQLProductRepository } from '../relational/SQLProductRepository.js';
+import { INITIAL_MIGRATION_SQL } from '../relational/migrations/001_initial.js';
 
 export interface MySQLConfig {
   host: string;
@@ -38,10 +35,10 @@ function loadDriver(): { createPool: (config: MySQLConfig) => Pool } {
   }
 }
 
+/** mysql2 types bind parameters as `any[]`, hence the casts below. */
 class MySQLSQLRunner implements SQLRunner {
   constructor(private readonly pool: Pool) {}
 
-  // mysql2 types require `ExecuteValues` (any[]), so we cast here.
   async run(query: string, params: unknown[] = []): Promise<void> {
     // biome-ignore lint/suspicious/noExplicitAny: mysql2 ExecuteValues
     await this.pool.execute(query, params as any[]);
@@ -59,12 +56,6 @@ class MySQLSQLRunner implements SQLRunner {
     return (rows as T[])[0];
   }
 }
-
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const MIGRATION_PATH = join(
-  __dirname,
-  '../relational/migrations/001_initial.sql',
-);
 
 /** MySQL / MariaDB adapter using mysql2. */
 export class MySQLAdapter extends BaseSQLAdapter implements DatabaseAdapter {
@@ -87,19 +78,15 @@ export class MySQLAdapter extends BaseSQLAdapter implements DatabaseAdapter {
   }
 
   protected get migrationSql(): string {
-    // MySQL uses backtick quoting and doesn't support ON CONFLICT — adjust.
-    return readFileSync(MIGRATION_PATH, 'utf8').replace(
-      /ON CONFLICT \(version\) DO NOTHING/g,
-      '',
-    );
+    // MySQL has no `ON CONFLICT`; `INSERT IGNORE` keeps re-runs idempotent.
+    return INITIAL_MIGRATION_SQL.replace(
+      'INSERT INTO occ_migration',
+      'INSERT IGNORE INTO occ_migration',
+    ).replace(/\s*ON CONFLICT \(version\) DO NOTHING/g, '');
   }
 
   protected tableExistsQuery(table: string): string {
     return `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '${table}'`;
-  }
-
-  override async verify(): Promise<VerificationResult> {
-    return super.verify();
   }
 
   async close(): Promise<void> {

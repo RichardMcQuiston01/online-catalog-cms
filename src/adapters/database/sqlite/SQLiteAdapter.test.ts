@@ -224,4 +224,64 @@ describe('SQLiteAdapter', () => {
       expect(await adapter.images.get(img.id)).toBeNull();
     });
   });
+
+  describe('list pagination and image loading', () => {
+    const description = document([paragraph([text('d')])]);
+
+    it('supports offset without limit', async () => {
+      for (const name of ['A', 'B', 'C']) {
+        await adapter.categories.create({ name });
+      }
+      const rest = await adapter.categories.list({ offset: 1 });
+      expect(rest.map((c) => c.name)).toEqual(['B', 'C']);
+    });
+
+    it('rejects non-integer or negative limit/offset', async () => {
+      await expect(adapter.products.list({ limit: -1 })).rejects.toThrow(
+        'limit must be a non-negative integer',
+      );
+      await expect(adapter.categories.list({ offset: 1.5 })).rejects.toThrow(
+        'offset must be a non-negative integer',
+      );
+    });
+
+    it('attaches each product its own images in sort order', async () => {
+      const first = await adapter.products.create({
+        name: 'First',
+        price: 1,
+        description,
+      });
+      const second = await adapter.products.create({
+        name: 'Second',
+        price: 2,
+        description,
+      });
+      await adapter.images.create({
+        productId: first.id,
+        url: 'b.jpg',
+        altText: '',
+        sortOrder: 1,
+      });
+      await adapter.images.create({
+        productId: first.id,
+        url: 'a.jpg',
+        altText: '',
+        sortOrder: 0,
+      });
+      await adapter.images.create({
+        productId: second.id,
+        url: 'c.jpg',
+        altText: '',
+      });
+
+      const listed = await adapter.products.list();
+      const imagesByName = Object.fromEntries(
+        listed.map((p) => [p.name, p.images.map((i) => i.url)]),
+      );
+      expect(imagesByName).toEqual({
+        First: ['a.jpg', 'b.jpg'],
+        Second: ['c.jpg'],
+      });
+    });
+  });
 });

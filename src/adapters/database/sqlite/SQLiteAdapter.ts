@@ -1,12 +1,8 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type {
   CategoryRepository,
   DatabaseAdapter,
   ImageRepository,
   ProductRepository,
-  VerificationResult,
 } from '../../../interfaces/DatabaseAdapter.js';
 import {
   BaseSQLAdapter,
@@ -15,13 +11,12 @@ import {
 import { SQLCategoryRepository } from '../relational/SQLCategoryRepository.js';
 import { SQLImageRepository } from '../relational/SQLImageRepository.js';
 import { SQLProductRepository } from '../relational/SQLProductRepository.js';
+import { INITIAL_MIGRATION_SQL } from '../relational/migrations/001_initial.js';
 
 export interface SQLiteConfig {
   /** Path to the SQLite database file. Use ':memory:' for an in-memory DB. */
   filename: string;
 }
-
-// ── Bun:sqlite runner ────────────────────────────────────────────────────────
 
 class BunSQLiteRunner implements SQLRunner {
   // biome-ignore lint/suspicious/noExplicitAny: bun:sqlite Database type
@@ -40,8 +35,6 @@ class BunSQLiteRunner implements SQLRunner {
   }
 }
 
-// ── better-sqlite3 runner ────────────────────────────────────────────────────
-
 class BetterSqliteRunner implements SQLRunner {
   // biome-ignore lint/suspicious/noExplicitAny: better-sqlite3 Database type
   constructor(private readonly db: any) {}
@@ -59,12 +52,8 @@ class BetterSqliteRunner implements SQLRunner {
   }
 }
 
-// ── Factory: pick the available driver ───────────────────────────────────────
-
 interface SQLiteInstance {
   runner: SQLRunner;
-  // biome-ignore lint/suspicious/noExplicitAny: driver-specific handle
-  instance: any;
   close(): void;
 }
 
@@ -76,7 +65,6 @@ async function createSQLiteInstance(filename: string): Promise<SQLiteInstance> {
     db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     return {
       runner: new BunSQLiteRunner(db),
-      instance: db,
       close: () => db.close(),
     };
   } catch {
@@ -93,7 +81,6 @@ async function createSQLiteInstance(filename: string): Promise<SQLiteInstance> {
     db.pragma('foreign_keys = ON');
     return {
       runner: new BetterSqliteRunner(db),
-      instance: db,
       close: () => db.close(),
     };
   } catch {
@@ -103,14 +90,6 @@ async function createSQLiteInstance(filename: string): Promise<SQLiteInstance> {
     );
   }
 }
-
-// ── Adapter ──────────────────────────────────────────────────────────────────
-
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const MIGRATION_PATH = join(
-  __dirname,
-  '../relational/migrations/001_initial.sql',
-);
 
 /** SQLite database adapter. Uses bun:sqlite in Bun, better-sqlite3 in Node.js. */
 export class SQLiteAdapter extends BaseSQLAdapter implements DatabaseAdapter {
@@ -147,7 +126,7 @@ export class SQLiteAdapter extends BaseSQLAdapter implements DatabaseAdapter {
     return this._images;
   }
 
-  /** Must be called before any other method. Sets up the SQLite driver. */
+  /** Opens the database with whichever SQLite driver is available, then migrates. */
   override async initialize(): Promise<void> {
     const { runner, close } = await createSQLiteInstance(this.config.filename);
     this.runner = runner;
@@ -160,15 +139,11 @@ export class SQLiteAdapter extends BaseSQLAdapter implements DatabaseAdapter {
   }
 
   protected get migrationSql(): string {
-    return readFileSync(MIGRATION_PATH, 'utf8');
+    return INITIAL_MIGRATION_SQL;
   }
 
   protected tableExistsQuery(table: string): string {
     return `SELECT name FROM sqlite_master WHERE type='table' AND name='${table}'`;
-  }
-
-  override async verify(): Promise<VerificationResult> {
-    return super.verify();
   }
 
   async close(): Promise<void> {

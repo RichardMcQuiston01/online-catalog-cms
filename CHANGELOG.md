@@ -8,9 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `.github/workflows/ci.yml`: runs lint, typecheck, tests, build and a smoke test of the built package on every pull request and push to `main`/`dev`.
+- `bun run smoke:dist`, which loads the built `dist/` the way an npm consumer would and initializes a SQLite database.
+- Exported `ProductService`, `CategoryService`, `ImageService` and the `UploadImageInput` type so consumers can name the types of `catalog.products`, `catalog.categories` and `catalog.images`.
 - `ROADMAP.md`, linked from the README, tracking outstanding work (PR CI, a pre-existing lint failure, and CI coverage for the non-SQLite database adapters).
 
+### Changed
+- Shared helpers replace duplicated code: `utils/merge.ts` (partial-update merging), `relational/sqlHelpers.ts` (WHERE/pagination/image loading) and `storage/storageKeys.ts` (key generation and URL parsing).
+- `products.list` now loads images in one query per 500 products (SQL, MongoDB) instead of one per product.
+- Storage keys now use a UUID prefix instead of `Date.now()` to avoid collisions; `S3Adapter` honors `UploadOptions.public` and no longer allows `/` in generated keys.
+- Removed redundant `verify()` overrides, an unused `SQLiteInstance.instance` field and banner comments; corrected inaccurate comments (Redis stores JSON strings, not hashes; `PostgresConfig.url` is a string only).
+
 ### Fixed
+- **SQLite, PostgreSQL and MySQL adapters failed to initialize in the published package**: the migration SQL was read from a `.sql` file that is not part of `dist/`. The SQL is now embedded in the bundle (`001_initial.ts`; a test keeps it identical to `001_initial.sql`).
+- PostgreSQL adapter sent `?` placeholders, which PostgreSQL rejects; they are now rewritten to `$1, $2, ...`.
+- MySQL adapter inserted a duplicate `occ_migration` row (and failed) on the second `initialize()`; it now uses `INSERT IGNORE`.
+- `list({ offset })` without `limit` was a syntax error in SQL adapters, and `limit`/`offset` were interpolated unvalidated into SQL. They are now validated as non-negative integers.
+- `LocalStorageAdapter` called `Bun.write`, which does not exist in Node.js; it now uses `node:fs/promises`. `delete` also refuses URLs that resolve outside the upload directory.
+- `ImageService.upload` leaves no orphaned file in storage when saving the image record fails.
+- `RedisAdapter` product search now also matches SKU, like the SQL and MongoDB adapters; MongoDB search input is regex-escaped.
 - Documentation corrections: README and `ROADMAP.md` no longer claim PostgreSQL/MySQL/Redis/MongoDB tests exist; the README's Manual Migrations section now links to `001_initial.sql` on GitHub (it isn't in the published package); `CLAUDE.md` uses the scoped package name; `docs/API.md` now covers `close()`, `get`/`update`/`delete` on categories, `images.get`, pagination and `search` filters, and `images.upload` options.
 - The `bun run lint` failure in `package.json` (Biome wanted the `files` and `trustedDependencies` arrays collapsed to a single line). Removed the now-resolved item from `ROADMAP.md`.
 

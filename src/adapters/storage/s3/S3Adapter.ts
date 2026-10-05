@@ -5,6 +5,7 @@ import type {
   StorageAdapter,
   UploadOptions,
 } from '../../../interfaces/StorageAdapter.js';
+import { generateStorageKey, keyFromUrl } from '../storageKeys.js';
 
 export interface S3Config {
   bucket: string;
@@ -73,26 +74,24 @@ export class S3Adapter implements StorageAdapter {
     filename: string,
     options?: UploadOptions,
   ): Promise<string> {
-    const safeName = filename.replace(/[^a-zA-Z0-9._/-]/g, '_');
-    const key = `${Date.now()}-${safeName}`;
+    const key = generateStorageKey(filename);
     const contentType = options?.contentType ?? guessContentType(filename);
+    const isPublic = options?.public ?? this.publicRead;
 
     const command = new this.aws.PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
       Body: file,
       ContentType: contentType,
-      ACL: this.publicRead ? 'public-read' : 'private',
+      ACL: isPublic ? 'public-read' : 'private',
     });
 
-    await (
-      this.client as unknown as { send: (cmd: object) => Promise<void> }
-    ).send(command);
+    await this.client.send(command);
     return this.getPublicUrl(key);
   }
 
   async delete(url: string): Promise<void> {
-    const key = this.urlToKey(url);
+    const key = keyFromUrl(url, this.baseUrl);
     if (!key) return;
 
     const command = new this.aws.DeleteObjectCommand({
@@ -100,21 +99,11 @@ export class S3Adapter implements StorageAdapter {
       Key: key,
     });
 
-    await (
-      this.client as unknown as { send: (cmd: object) => Promise<void> }
-    ).send(command);
+    await this.client.send(command);
   }
 
   getPublicUrl(key: string): string {
     return `${this.baseUrl}/${key}`;
-  }
-
-  private urlToKey(url: string): string | null {
-    const prefix = `${this.baseUrl}/`;
-    if (url.startsWith(prefix)) {
-      return url.slice(prefix.length);
-    }
-    return null;
   }
 }
 

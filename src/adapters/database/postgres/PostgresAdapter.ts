@@ -1,13 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type {
   CategoryRepository,
   DatabaseAdapter,
   ImageRepository,
   ProductRepository,
-  VerificationResult,
 } from '../../../interfaces/DatabaseAdapter.js';
 import {
   BaseSQLAdapter,
@@ -16,9 +12,10 @@ import {
 import { SQLCategoryRepository } from '../relational/SQLCategoryRepository.js';
 import { SQLImageRepository } from '../relational/SQLImageRepository.js';
 import { SQLProductRepository } from '../relational/SQLProductRepository.js';
+import { INITIAL_MIGRATION_SQL } from '../relational/migrations/001_initial.js';
 
 export interface PostgresConfig {
-  /** postgres.js connection string or config object. */
+  /** postgres.js connection string, e.g. 'postgres://user:pass@host/db'. */
   url: string;
 }
 
@@ -36,29 +33,34 @@ function loadDriver(): (url: string) => Sql {
   }
 }
 
+/**
+ * Rewrites the repositories' `?` placeholders to PostgreSQL's `$1, $2, ...`.
+ * Safe because bound values never appear in the SQL text itself.
+ */
+export function toNumberedPlaceholders(query: string): string {
+  let position = 0;
+  return query.replace(/\?/g, () => `$${++position}`);
+}
+
 class PostgresSQLRunner implements SQLRunner {
   constructor(private readonly sql: Sql) {}
 
   async run(query: string, params: unknown[] = []): Promise<void> {
-    await this.sql.unsafe(query, params as never[]);
+    await this.execute(query, params);
   }
 
   async all<T>(query: string, params: unknown[] = []): Promise<T[]> {
-    const rows = await this.sql.unsafe(query, params as never[]);
-    return rows as unknown as T[];
+    return (await this.execute(query, params)) as unknown as T[];
   }
 
   async get<T>(query: string, params: unknown[] = []): Promise<T | undefined> {
-    const rows = await this.sql.unsafe(query, params as never[]);
-    return (rows as unknown as T[])[0];
+    return (await this.all<T>(query, params))[0];
+  }
+
+  private execute(query: string, params: unknown[]) {
+    return this.sql.unsafe(toNumberedPlaceholders(query), params as never[]);
   }
 }
-
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const MIGRATION_PATH = join(
-  __dirname,
-  '../relational/migrations/001_initial.sql',
-);
 
 /** PostgreSQL database adapter using postgres.js. */
 export class PostgresAdapter extends BaseSQLAdapter implements DatabaseAdapter {
@@ -81,15 +83,11 @@ export class PostgresAdapter extends BaseSQLAdapter implements DatabaseAdapter {
   }
 
   protected get migrationSql(): string {
-    return readFileSync(MIGRATION_PATH, 'utf8');
+    return INITIAL_MIGRATION_SQL;
   }
 
   protected tableExistsQuery(table: string): string {
     return `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '${table}'`;
-  }
-
-  override async verify(): Promise<VerificationResult> {
-    return super.verify();
   }
 
   async close(): Promise<void> {

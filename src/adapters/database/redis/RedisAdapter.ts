@@ -20,6 +20,10 @@ import type {
   ProductFilter,
   UpdateProductInput,
 } from '../../../types/product.js';
+import {
+  mergeCategoryUpdate,
+  mergeProductUpdate,
+} from '../../../utils/merge.js';
 import { generateSlug } from '../../../utils/slug.js';
 
 export interface RedisConfig {
@@ -44,7 +48,8 @@ function loadDriver(): RedisConstructor {
 }
 
 /**
- * Redis adapter. Data is stored as JSON strings in Redis hashes.
+ * Redis adapter. Each entity is stored as a JSON string, with sets and sorted
+ * sets as secondary indexes.
  *
  * Key layout:
  *   {prefix}:product:{id}          — product JSON
@@ -92,6 +97,14 @@ export class RedisAdapter implements DatabaseAdapter {
   async close(): Promise<void> {
     await this.client.quit();
   }
+}
+
+function matchesProductSearch(product: Product, search: string): boolean {
+  const needle = search.toLowerCase();
+  return (
+    product.name.toLowerCase().includes(needle) ||
+    (product.sku?.toLowerCase().includes(needle) ?? false)
+  );
 }
 
 class RedisProductRepository implements ProductRepository {
@@ -146,19 +159,11 @@ class RedisProductRepository implements ProductRepository {
     if (!existing) throw new Error(`Product not found: ${id}`);
 
     const oldCategoryId = existing.categoryId;
-    const now = new Date().toISOString();
 
     const updated: Product = {
       ...existing,
-      name: input.name ?? existing.name,
-      slug: input.slug ?? existing.slug,
-      description: input.description ?? existing.description,
-      price: input.price ?? existing.price,
-      sku: input.sku !== undefined ? input.sku : existing.sku,
-      categoryId:
-        input.categoryId !== undefined ? input.categoryId : existing.categoryId,
-      metadata: input.metadata ?? existing.metadata,
-      updatedAt: new Date(now),
+      ...mergeProductUpdate(existing, input),
+      updatedAt: new Date(),
     };
 
     await this.client.set(this.key(id), JSON.stringify(updated));
@@ -209,10 +214,7 @@ class RedisProductRepository implements ProductRepository {
       const product = await this.get(id);
       if (!product) continue;
 
-      if (
-        filter.search &&
-        !product.name.toLowerCase().includes(filter.search.toLowerCase())
-      )
+      if (filter.search && !matchesProductSearch(product, filter.search))
         continue;
       if (filter.minPrice !== undefined && product.price < filter.minPrice)
         continue;
@@ -271,15 +273,10 @@ class RedisCategoryRepository implements CategoryRepository {
     const existing = await this.get(id);
     if (!existing) throw new Error(`Category not found: ${id}`);
 
-    const now = new Date().toISOString();
     const updated: Category = {
       ...existing,
-      name: input.name ?? existing.name,
-      slug: input.slug ?? existing.slug,
-      parentId:
-        input.parentId !== undefined ? input.parentId : existing.parentId,
-      metadata: input.metadata ?? existing.metadata,
-      updatedAt: new Date(now),
+      ...mergeCategoryUpdate(existing, input),
+      updatedAt: new Date(),
     };
 
     await this.client.set(this.key(id), JSON.stringify(updated));

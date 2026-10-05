@@ -20,6 +20,10 @@ import type {
   ProductFilter,
   UpdateProductInput,
 } from '../../../types/product.js';
+import {
+  mergeCategoryUpdate,
+  mergeProductUpdate,
+} from '../../../utils/merge.js';
 import { generateSlug } from '../../../utils/slug.js';
 
 export interface MongoDBConfig {
@@ -76,6 +80,25 @@ interface ImageDoc {
   altText: string;
   sortOrder: number;
   createdAt: Date;
+}
+
+function toImage(doc: ImageDoc): Image {
+  return {
+    id: doc._id,
+    productId: doc.productId,
+    url: doc.url,
+    altText: doc.altText,
+    sortOrder: doc.sortOrder,
+    createdAt: doc.createdAt,
+  };
+}
+
+/** Case-insensitive "contains" match; user input is escaped, not a regex. */
+function containsPattern(search: string): { $regex: string; $options: string } {
+  return {
+    $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+    $options: 'i',
+  };
 }
 
 /** MongoDB adapter. Each entity type maps to its own collection. */
@@ -141,13 +164,21 @@ class MongoProductRepository implements ProductRepository {
     return this.db().collection<ImageDoc>('occ_image');
   }
 
-  private async toProduct(doc: ProductDoc): Promise<Product> {
-    const images = await this.imgCol()
-      .find({ productId: doc._id })
+  /** Attaches images to many products using a single query (avoids N+1). */
+  private async toProducts(docs: ProductDoc[]): Promise<Product[]> {
+    const imageDocs = await this.imgCol()
+      .find({ productId: { $in: docs.map((doc) => doc._id) } })
       .sort({ sortOrder: 1 })
       .toArray();
 
-    return {
+    const imagesByProductId = new Map<string, Image[]>();
+    for (const imageDoc of imageDocs) {
+      const images = imagesByProductId.get(imageDoc.productId) ?? [];
+      images.push(toImage(imageDoc));
+      imagesByProductId.set(imageDoc.productId, images);
+    }
+
+    return docs.map((doc) => ({
       id: doc._id,
       name: doc.name,
       slug: doc.slug,
@@ -155,18 +186,17 @@ class MongoProductRepository implements ProductRepository {
       price: doc.price,
       sku: doc.sku,
       categoryId: doc.categoryId,
-      images: images.map((img) => ({
-        id: img._id,
-        productId: img.productId,
-        url: img.url,
-        altText: img.altText,
-        sortOrder: img.sortOrder,
-        createdAt: img.createdAt,
-      })),
+      images: imagesByProductId.get(doc._id) ?? [],
       metadata: doc.metadata,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
-    };
+    }));
+  }
+
+  private async toProduct(doc: ProductDoc): Promise<Product> {
+    const [product] = await this.toProducts([doc]);
+    if (!product) throw new Error(`Failed to build product: ${doc._id}`);
+    return product;
   }
 
   async create(input: CreateProductInput): Promise<Product> {
@@ -198,23 +228,10 @@ class MongoProductRepository implements ProductRepository {
     const existing = await this.get(id);
     if (!existing) throw new Error(`Product not found: ${id}`);
 
-    const now = new Date();
     await this.col().updateOne(
       { _id: id },
       {
-        $set: {
-          name: input.name ?? existing.name,
-          slug: input.slug ?? existing.slug,
-          description: input.description ?? existing.description,
-          price: input.price ?? existing.price,
-          sku: input.sku !== undefined ? input.sku : existing.sku,
-          categoryId:
-            input.categoryId !== undefined
-              ? input.categoryId
-              : existing.categoryId,
-          metadata: input.metadata ?? existing.metadata,
-          updatedAt: now,
-        },
+        $set: { ...mergeProductUpdate(existing, input), updatedAt: new Date() },
       },
     );
 
@@ -238,18 +255,15 @@ class MongoProductRepository implements ProductRepository {
       if (filter.maxPrice !== undefined) query.price.$lte = filter.maxPrice;
     }
     if (filter.search) {
-      query.$or = [
-        { name: { $regex: filter.search, $options: 'i' } },
-        { sku: { $regex: filter.search, $options: 'i' } },
-      ];
+      const pattern = containsPattern(filter.search);
+      query.$or = [{ name: pattern }, { sku: pattern }];
     }
 
     let cursor = this.col().find(query).sort({ createdAt: -1 });
     if (filter.offset) cursor = cursor.skip(filter.offset);
     if (filter.limit) cursor = cursor.limit(filter.limit);
 
-    const docs = await cursor.toArray();
-    return Promise.all(docs.map((doc) => this.toProduct(doc)));
+    return this.toProducts(await cursor.toArray());
   }
 }
 
@@ -297,17 +311,12 @@ class MongoCategoryRepository implements CategoryRepository {
     const existing = await this.get(id);
     if (!existing) throw new Error(`Category not found: ${id}`);
 
-    const now = new Date();
     await this.col().updateOne(
       { _id: id },
       {
         $set: {
-          name: input.name ?? existing.name,
-          slug: input.slug ?? existing.slug,
-          parentId:
-            input.parentId !== undefined ? input.parentId : existing.parentId,
-          metadata: input.metadata ?? existing.metadata,
-          updatedAt: now,
+          ...mergeCategoryUpdate(existing, input),
+          updatedAt: new Date(),
         },
       },
     );
@@ -327,7 +336,7 @@ class MongoCategoryRepository implements CategoryRepository {
     const query: any = {};
     if (filter.parentId !== undefined) query.parentId = filter.parentId;
     if (filter.search) {
-      query.name = { $regex: filter.search, $options: 'i' };
+      query.name = containsPattern(filter.search);
     }
 
     let cursor = this.col().find(query).sort({ name: 1 });
@@ -358,27 +367,12 @@ class MongoImageRepository implements ImageRepository {
       createdAt: now,
     };
     await this.col().insertOne(doc);
-    return {
-      id: doc._id,
-      productId: doc.productId,
-      url: doc.url,
-      altText: doc.altText,
-      sortOrder: doc.sortOrder,
-      createdAt: doc.createdAt,
-    };
+    return toImage(doc);
   }
 
   async get(id: string): Promise<Image | null> {
     const doc = await this.col().findOne({ _id: id });
-    if (!doc) return null;
-    return {
-      id: doc._id,
-      productId: doc.productId,
-      url: doc.url,
-      altText: doc.altText,
-      sortOrder: doc.sortOrder,
-      createdAt: doc.createdAt,
-    };
+    return doc ? toImage(doc) : null;
   }
 
   async delete(id: string): Promise<void> {
@@ -390,13 +384,6 @@ class MongoImageRepository implements ImageRepository {
       .find({ productId })
       .sort({ sortOrder: 1 })
       .toArray();
-    return docs.map((doc) => ({
-      id: doc._id,
-      productId: doc.productId,
-      url: doc.url,
-      altText: doc.altText,
-      sortOrder: doc.sortOrder,
-      createdAt: doc.createdAt,
-    }));
+    return docs.map(toImage);
   }
 }

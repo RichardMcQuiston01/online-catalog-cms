@@ -1,14 +1,16 @@
-import { createWriteStream, existsSync, mkdirSync, unlinkSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { createWriteStream, mkdirSync } from 'node:fs';
+import { rm, writeFile } from 'node:fs/promises';
+import { resolve, sep } from 'node:path';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type {
   StorageAdapter,
   UploadOptions,
 } from '../../../interfaces/StorageAdapter.js';
+import { generateStorageKey, keyFromUrl } from '../storageKeys.js';
 
 export interface LocalStorageConfig {
-  /** Absolute path to the directory where uploaded files will be stored. */
+  /** Directory where uploaded files are stored; created if missing. */
   uploadDir: string;
   /**
    * Base URL prefix for returned file URLs, e.g. 'http://localhost:3000/uploads'.
@@ -25,10 +27,7 @@ export class LocalStorageAdapter implements StorageAdapter {
   constructor(config: LocalStorageConfig) {
     this.uploadDir = resolve(config.uploadDir);
     this.baseUrl = config.baseUrl ?? '/uploads';
-
-    if (!existsSync(this.uploadDir)) {
-      mkdirSync(this.uploadDir, { recursive: true });
-    }
+    mkdirSync(this.uploadDir, { recursive: true });
   }
 
   async upload(
@@ -36,38 +35,30 @@ export class LocalStorageAdapter implements StorageAdapter {
     filename: string,
     _options?: UploadOptions,
   ): Promise<string> {
-    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const uniqueName = `${Date.now()}-${safeName}`;
-    const filePath = join(this.uploadDir, uniqueName);
+    const key = generateStorageKey(filename);
+    const filePath = resolve(this.uploadDir, key);
 
     if (Buffer.isBuffer(file)) {
-      await Bun.write(filePath, file);
+      await writeFile(filePath, file);
     } else {
-      const writeStream = createWriteStream(filePath);
-      await pipeline(file, writeStream);
+      await pipeline(file, createWriteStream(filePath));
     }
 
-    return this.getPublicUrl(uniqueName);
+    return this.getPublicUrl(key);
   }
 
   async delete(url: string): Promise<void> {
-    const key = this.urlToKey(url);
+    const key = keyFromUrl(url, this.baseUrl);
     if (!key) return;
-    const filePath = join(this.uploadDir, key);
-    if (existsSync(filePath)) {
-      unlinkSync(filePath);
-    }
+
+    // URLs come from the database; never delete outside the upload directory.
+    const filePath = resolve(this.uploadDir, key);
+    if (!filePath.startsWith(this.uploadDir + sep)) return;
+
+    await rm(filePath, { force: true });
   }
 
   getPublicUrl(key: string): string {
     return `${this.baseUrl}/${key}`;
-  }
-
-  private urlToKey(url: string): string | null {
-    const prefix = `${this.baseUrl}/`;
-    if (url.startsWith(prefix)) {
-      return url.slice(prefix.length);
-    }
-    return null;
   }
 }
