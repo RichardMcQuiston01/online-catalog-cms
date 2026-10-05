@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- A platform-neutral `browser` entry point, available as the `browser` export condition on the package root and as `@richardmcquiston01/online-catalog-cms/browser`. It contains `OnlineCatalog`, the services, `Installer`, the rich-text helpers, the types and `ExternalURLAdapter`, with no Node.js built-ins at runtime. Browser bundlers pick it automatically, so browser apps no longer need aliases or shims for `fs`, `path`, `module`, `crypto` and friends.
+- Subpath exports for each adapter so server code can load only what it uses: `/sqlite`, `/postgres`, `/mysql`, `/redis`, `/mongodb`, `/storage/local` and `/storage/s3`.
+- `"sideEffects": false` in `package.json` so bundlers can tree-shake the package.
+- `bun run smoke:dist` now loads every entry point (ESM and CJS), fails if the browser entry imports a Node.js built-in or any other non-relative module, and fails if it exports a server adapter.
+
+### Changed
+- The build now emits one file per entry point and shares code between them (`splitting: true`). The package root exports exactly the same names as before, so existing Node.js, Bun and Deno imports keep working.
+- Type declarations are now resolved per module format (`.d.ts` for `import`, `.d.cts` for `require`).
+
 ## [0.1.3] - 2026-10-05
 
 ### Added

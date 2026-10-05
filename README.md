@@ -61,6 +61,33 @@ const product = await catalog.products.create({
 console.log(product.id, product.slug); // auto-generated UUID and slug
 ```
 
+## Entry points
+
+The package root (`@richardmcquiston01/online-catalog-cms`) exports everything and works in Node.js, Bun, and Deno. Other entry points let you load only what you need:
+
+| Import path                                         | Contents                                                                                                   |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `@richardmcquiston01/online-catalog-cms`            | Everything: the core below plus every database and storage adapter. In a browser build this resolves to the `/browser` entry. |
+| `@richardmcquiston01/online-catalog-cms/browser`    | The core only: `OnlineCatalog`, the services, `Installer`, the rich-text helpers, the types, and `ExternalURLAdapter`. No Node.js built-ins. |
+| `.../sqlite`, `.../postgres`, `.../mysql`, `.../redis`, `.../mongodb` | One database adapter each.                                                       |
+| `.../storage/local`, `.../storage/s3`               | One storage adapter each.                                                                                  |
+
+### Using it in a browser app
+
+Bundlers such as Vite, webpack, and esbuild pick the `browser` export condition automatically, so `import { OnlineCatalog } from "@richardmcquiston01/online-catalog-cms"` works in browser code with no aliases or shims. The server adapters are not part of that entry (importing `SQLiteAdapter` from it fails to resolve), so supply your own `DatabaseAdapter`. The [demo](https://github.com/RichardMcQuiston01/online-catalog-cms-demo) does this with a small `localStorage`-backed adapter.
+
+### Importing a single adapter
+
+In server code, importing from a subpath keeps the dependency graph small and makes it clear which optional driver you need:
+
+```ts
+import { OnlineCatalog } from "@richardmcquiston01/online-catalog-cms";
+import { SQLiteAdapter } from "@richardmcquiston01/online-catalog-cms/sqlite";
+import { S3Adapter } from "@richardmcquiston01/online-catalog-cms/storage/s3";
+```
+
+Importing the adapters from the package root still works.
+
 ## Buy Me a Coffee
 
 If this app, code, or repository has helped you or someone you know, please consider donating. I appreciate any help to offset the costs of development and/or AI Credits.
