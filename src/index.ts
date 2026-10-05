@@ -1,12 +1,12 @@
-export * from './types/index.js';
-export * from './interfaces/index.js';
-export * from './rich-text/index.js';
-export { OnlineCatalog } from './catalog.js';
-export type { OnlineCatalogConfig } from './catalog.js';
-export { ProductService } from './services/ProductService.js';
-export { CategoryService } from './services/CategoryService.js';
-export { ImageService } from './services/ImageService.js';
-export type { UploadImageInput } from './services/ImageService.js';
+/**
+ * Full entry point for Node, Bun and Deno: the platform-neutral core plus
+ * every database and storage adapter.
+ *
+ * Browser bundlers resolve the `browser` export condition instead and get
+ * `./browser.ts` (no adapters, no Node built-ins). Server code can also import
+ * each adapter from its own subpath, e.g. `.../sqlite` or `.../storage/s3`.
+ */
+export * from './browser.js';
 
 // Database adapters
 export { SQLiteAdapter } from './adapters/database/sqlite/SQLiteAdapter.js';
@@ -20,13 +20,8 @@ export type { RedisConfig } from './adapters/database/redis/RedisAdapter.js';
 export { MongoDBAdapter } from './adapters/database/mongodb/MongoDBAdapter.js';
 export type { MongoDBConfig } from './adapters/database/mongodb/MongoDBAdapter.js';
 
-// Installer
-export { Installer } from './installer/Installer.js';
-export type { InstallOptions } from './installer/Installer.js';
-
-// Storage adapters
+// Storage adapters (ExternalURLAdapter is exported from ./browser.js)
 export { LocalStorageAdapter } from './adapters/storage/local/LocalStorageAdapter.js';
 export type { LocalStorageConfig } from './adapters/storage/local/LocalStorageAdapter.js';
 export { S3Adapter } from './adapters/storage/s3/S3Adapter.js';
 export type { S3Config } from './adapters/storage/s3/S3Adapter.js';
-export { ExternalURLAdapter } from './adapters/storage/external/ExternalURLAdapter.js';

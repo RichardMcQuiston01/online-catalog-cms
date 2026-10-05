@@ -2,6 +2,23 @@
 
 `online-catalog-cms` separates persistence (`DatabaseAdapter`) from file storage (`StorageAdapter`). Pick the ones that match your infrastructure and pass them to `OnlineCatalog`; swapping an adapter never requires changing business logic.
 
+## Where to import from
+
+Every example below imports from the package root, which works in Node.js, Bun, and Deno. Each adapter is also available from its own subpath, which loads only that adapter:
+
+| Adapter               | Subpath                                                 |
+| --------------------- | ------------------------------------------------------- |
+| `SQLiteAdapter`       | `@richardmcquiston01/online-catalog-cms/sqlite`         |
+| `PostgresAdapter`     | `@richardmcquiston01/online-catalog-cms/postgres`       |
+| `MySQLAdapter`        | `@richardmcquiston01/online-catalog-cms/mysql`          |
+| `RedisAdapter`        | `@richardmcquiston01/online-catalog-cms/redis`          |
+| `MongoDBAdapter`      | `@richardmcquiston01/online-catalog-cms/mongodb`        |
+| `LocalStorageAdapter` | `@richardmcquiston01/online-catalog-cms/storage/local`  |
+| `S3Adapter`           | `@richardmcquiston01/online-catalog-cms/storage/s3`     |
+| `ExternalURLAdapter`  | root, or `@richardmcquiston01/online-catalog-cms/browser` |
+
+These adapters need Node.js built-ins, so they are not available in browser builds. Browser apps import from the package root (which resolves to the `/browser` entry) and pass their own `DatabaseAdapter`. `ExternalURLAdapter` is the one storage adapter that works in the browser.
+
 ## Database Adapters
 
 All adapters implement the same `DatabaseAdapter` interface.
