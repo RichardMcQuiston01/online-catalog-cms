@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { LocalStorageAdapter } from './LocalStorageAdapter.js';
 
@@ -20,7 +20,6 @@ describe('LocalStorageAdapter', () => {
     const dir = join(TEST_DIR, 'sub');
     const adapter = new LocalStorageAdapter({ uploadDir: dir });
     expect(existsSync(dir)).toBe(true);
-    // cleanup
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -41,7 +40,6 @@ describe('LocalStorageAdapter', () => {
     const adapter = new LocalStorageAdapter({ uploadDir: TEST_DIR });
     const url = await adapter.upload(Buffer.from('to delete'), 'delete-me.txt');
 
-    // Verify file exists
     const key = url.replace('/uploads/', '');
     const filePath = join(TEST_DIR, key);
     expect(existsSync(filePath)).toBe(true);
@@ -65,5 +63,23 @@ describe('LocalStorageAdapter', () => {
     await expect(
       adapter.delete('http://other-domain.com/file.jpg'),
     ).resolves.toBeUndefined();
+  });
+
+  it('never deletes files outside the upload directory', async () => {
+    const outsidePath = join(TEST_DIR, 'outside.txt');
+    writeFileSync(outsidePath, 'keep me');
+    const uploadDir = join(TEST_DIR, 'inner');
+    const adapter = new LocalStorageAdapter({ uploadDir });
+
+    await adapter.delete('/uploads/../outside.txt');
+
+    expect(existsSync(outsidePath)).toBe(true);
+  });
+
+  it('generates distinct keys for the same filename', async () => {
+    const adapter = new LocalStorageAdapter({ uploadDir: TEST_DIR });
+    const first = await adapter.upload(Buffer.from('1'), 'same.txt');
+    const second = await adapter.upload(Buffer.from('2'), 'same.txt');
+    expect(first).not.toBe(second);
   });
 });

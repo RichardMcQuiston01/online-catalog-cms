@@ -33,12 +33,18 @@ export class ImageService {
       contentType: input.contentType,
     });
 
-    return this.repo.create({
-      productId: input.productId,
-      url,
-      altText: input.altText,
-      sortOrder: input.sortOrder,
-    });
+    try {
+      return await this.repo.create({
+        productId: input.productId,
+        url,
+        altText: input.altText,
+        sortOrder: input.sortOrder,
+      });
+    } catch (error) {
+      // Don't leave an orphaned file behind when the record can't be saved.
+      await this.storage.delete(url).catch(() => {});
+      throw error;
+    }
   }
 
   /** Associate an already-hosted image URL with a product. */
@@ -54,9 +60,8 @@ export class ImageService {
     const image = await this.repo.get(id);
     if (!image) return;
 
-    if (this.storage) {
-      await this.storage.delete(image.url).catch(() => {});
-    }
+    // Best effort: a stale file must not block removing the database record.
+    await this.storage?.delete(image.url).catch(() => {});
 
     await this.repo.delete(id);
   }

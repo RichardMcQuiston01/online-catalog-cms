@@ -6,14 +6,15 @@ import type {
   ProductFilter,
   UpdateProductInput,
 } from '../../../types/product.js';
+import { mergeProductUpdate } from '../../../utils/merge.js';
 import { generateSlug } from '../../../utils/slug.js';
 import type { SQLRunner } from './BaseSQLAdapter.js';
+import { type ProductRow, productFromRow } from './rowMappers.js';
 import {
-  type ImageRow,
-  type ProductRow,
-  imageFromRow,
-  productFromRow,
-} from './rowMappers.js';
+  buildPaginationClause,
+  buildWhereClause,
+  loadImagesByProductId,
+} from './sqlHelpers.js';
 
 export class SQLProductRepository implements ProductRepository {
   constructor(private readonly db: SQLRunner) {}
@@ -54,17 +55,15 @@ export class SQLProductRepository implements ProductRepository {
     );
     if (!row) return null;
 
-    const imageRows = await this.db.all<ImageRow>(
-      'SELECT * FROM occ_image WHERE product_id = ? ORDER BY sort_order ASC',
-      [id],
-    );
-    return productFromRow(row, imageRows.map(imageFromRow));
+    const imagesByProductId = await loadImagesByProductId(this.db, [id]);
+    return productFromRow(row, imagesByProductId.get(id) ?? []);
   }
 
   async update(id: string, input: UpdateProductInput): Promise<Product> {
     const existing = await this.get(id);
     if (!existing) throw new Error(`Product not found: ${id}`);
 
+    const fields = mergeProductUpdate(existing, input);
     const now = new Date().toISOString();
     await this.db.run(
       `UPDATE occ_product SET
@@ -78,13 +77,13 @@ export class SQLProductRepository implements ProductRepository {
          updated_at  = ?
        WHERE id = ?`,
       [
-        input.name ?? existing.name,
-        input.slug ?? existing.slug,
-        JSON.stringify(input.description ?? existing.description),
-        input.price ?? existing.price,
-        input.sku !== undefined ? input.sku : existing.sku,
-        input.categoryId !== undefined ? input.categoryId : existing.categoryId,
-        JSON.stringify(input.metadata ?? existing.metadata),
+        fields.name,
+        fields.slug,
+        JSON.stringify(fields.description),
+        fields.price,
+        fields.sku,
+        fields.categoryId,
+        JSON.stringify(fields.metadata),
         now,
         id,
       ],
@@ -121,24 +120,17 @@ export class SQLProductRepository implements ProductRepository {
       params.push(filter.maxPrice);
     }
 
-    const where =
-      conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const limit = filter.limit !== undefined ? `LIMIT ${filter.limit}` : '';
-    const offset = filter.offset !== undefined ? `OFFSET ${filter.offset}` : '';
-
     const rows = await this.db.all<ProductRow>(
-      `SELECT * FROM occ_product ${where} ORDER BY created_at DESC ${limit} ${offset}`,
+      `SELECT * FROM occ_product ${buildWhereClause(conditions)} ORDER BY created_at DESC ${buildPaginationClause(filter)}`,
       params,
     );
 
-    const products: Product[] = [];
-    for (const row of rows) {
-      const imageRows = await this.db.all<ImageRow>(
-        'SELECT * FROM occ_image WHERE product_id = ? ORDER BY sort_order ASC',
-        [row.id],
-      );
-      products.push(productFromRow(row, imageRows.map(imageFromRow)));
-    }
-    return products;
+    const imagesByProductId = await loadImagesByProductId(
+      this.db,
+      rows.map((row) => row.id),
+    );
+    return rows.map((row) =>
+      productFromRow(row, imagesByProductId.get(row.id) ?? []),
+    );
   }
 }

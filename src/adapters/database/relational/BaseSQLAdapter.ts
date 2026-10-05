@@ -26,11 +26,16 @@ export abstract class BaseSQLAdapter {
   /** Dialect-specific table existence query — must return rows with a `name` column. */
   protected abstract tableExistsQuery(table: string): string;
 
+  /** Migration script for this dialect; every statement must be idempotent. */
   protected abstract get migrationSql(): string;
 
+  /**
+   * Runs the migration statement by statement, as most drivers reject
+   * multi-statement strings. Splitting on ';' means the script must not
+   * contain semicolons inside string literals or comments.
+   */
   async initialize(): Promise<void> {
-    const migration = this.migrationSql;
-    const statements = migration
+    const statements = this.migrationSql
       .split(';')
       .map((s) => s.trim())
       .filter((s) => s.length > 0);

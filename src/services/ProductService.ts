@@ -6,7 +6,7 @@ import type {
   UpdateProductInput,
 } from '../types/index.js';
 
-/** High-level product operations. Wraps the DB repository with slug generation. */
+/** High-level product operations; cleans up stored images on delete. */
 export class ProductService {
   constructor(
     private readonly repo: ProductRepository,
@@ -29,11 +29,12 @@ export class ProductService {
     const product = await this.repo.get(id);
     if (!product) return;
 
-    // Delete associated images from storage if available
-    if (this.storage) {
-      for (const image of product.images) {
-        await this.storage.delete(image.url).catch(() => {});
-      }
+    // Best effort: a stale file must not block removing the database record.
+    const { storage } = this;
+    if (storage) {
+      await Promise.allSettled(
+        product.images.map((image) => storage.delete(image.url)),
+      );
     }
 
     await this.repo.delete(id);

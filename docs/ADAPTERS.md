@@ -52,7 +52,7 @@ const db = new RedisAdapter({
 });
 ```
 
-Redis stores products and categories as hashes (`occ:product:{id}`) with sorted-set indexes. Suitable for read-heavy catalogs with simple filter needs.
+Redis stores each product, category and image as a JSON string (`occ:product:{id}`) with set and sorted-set indexes. Suitable for read-heavy catalogs with simple filter needs.
 
 ### MongoDB
 
