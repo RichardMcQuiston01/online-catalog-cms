@@ -84,7 +84,7 @@ await catalog.initialize();
 
 ### Manual Migrations
 
-Migration SQL files are included in the package under `src/adapters/database/relational/migrations/`. Run `001_initial.sql` with your preferred tool, then verify:
+The migration SQL is not shipped in the npm package (only `dist/` is published). Download [`001_initial.sql`](https://github.com/RichardMcQuiston01/online-catalog-cms/blob/main/src/adapters/database/relational/migrations/001_initial.sql) from the repository, run it with your preferred tool, then verify:
 
 ```ts
 const result = await catalog.installer.verify();
@@ -185,7 +185,7 @@ bun run lint        # lint and format check (biome)
 bun run lint:fix    # auto-fix lint/format issues
 ```
 
-Tests live alongside their source files (`*.test.ts`). Integration tests for SQLite run automatically; tests for PostgreSQL/MySQL/Redis/MongoDB require a live connection (they are skipped if the relevant environment variables are not set).
+Tests live alongside their source files (`*.test.ts`). Integration tests currently cover SQLite only; the PostgreSQL, MySQL, Redis and MongoDB adapters have no automated tests yet (see [ROADMAP.md](ROADMAP.md)).
 
 ### Releasing
 

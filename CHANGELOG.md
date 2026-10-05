@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ROADMAP.md`, linked from the README, tracking outstanding work (PR CI, a pre-existing lint failure, and CI coverage for the non-SQLite database adapters).
 
 ### Fixed
+- Documentation corrections: README and `ROADMAP.md` no longer claim PostgreSQL/MySQL/Redis/MongoDB tests exist; the README's Manual Migrations section now links to `001_initial.sql` on GitHub (it isn't in the published package); `CLAUDE.md` uses the scoped package name; `docs/API.md` now covers `close()`, `get`/`update`/`delete` on categories, `images.get`, pagination and `search` filters, and `images.upload` options.
 - The `bun run lint` failure in `package.json` (Biome wanted the `files` and `trustedDependencies` arrays collapsed to a single line). Removed the now-resolved item from `ROADMAP.md`.
 
 ## [0.1.1] - 2026-09-22
