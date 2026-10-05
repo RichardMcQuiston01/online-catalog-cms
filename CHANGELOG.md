@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-05
+
 ### Added
 - A shared `DatabaseAdapter` contract test suite (`adapterContract.ts`) covering CRUD, filters, pagination, images and referential behavior. It runs against SQLite always, and against Redis and MongoDB when `REDIS_URL` / `MONGODB_URL` are set; CI now starts both services.
 
