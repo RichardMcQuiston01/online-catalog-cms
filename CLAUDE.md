@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`online-catalog-cms` is a TypeScript NPM package providing an embeddable CMS for an online catalog. It is designed to be consumed by other packages via named exports, e.g. `import { OnlineCatalog } from 'online-catalog-cms'`.
+`online-catalog-cms` is a TypeScript NPM package providing an embeddable CMS for an online catalog. It is designed to be consumed by other packages via named exports, e.g. `import { OnlineCatalog } from '@richardmcquiston01/online-catalog-cms'`.
 
 ## Commands
 
-Once the project is scaffolded, the standard workflow using `bun`:
+Standard workflow using `bun`:
 
 ```sh
 bun install          # Install dependencies
