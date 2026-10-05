@@ -7,11 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-05
+
 ### Added
 - `.github/workflows/ci.yml`: runs lint, typecheck, tests, build and a smoke test of the built package on every pull request and push to `main`/`dev`.
 - `bun run smoke:dist`, which loads the built `dist/` the way an npm consumer would and initializes a SQLite database.
 - Exported `ProductService`, `CategoryService`, `ImageService` and the `UploadImageInput` type so consumers can name the types of `catalog.products`, `catalog.categories` and `catalog.images`.
-- `ROADMAP.md`, linked from the README, tracking outstanding work (PR CI, a pre-existing lint failure, and CI coverage for the non-SQLite database adapters).
+- `ROADMAP.md`, linked from the README, tracking outstanding work.
 
 ### Changed
 - Shared helpers replace duplicated code: `utils/merge.ts` (partial-update merging), `relational/sqlHelpers.ts` (WHERE/pagination/image loading) and `storage/storageKeys.ts` (key generation and URL parsing).
