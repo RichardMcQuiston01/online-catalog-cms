@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- A shared `DatabaseAdapter` contract test suite (`adapterContract.ts`) covering CRUD, filters, pagination, images and referential behavior. It runs against SQLite always, and against Redis and MongoDB when `REDIS_URL` / `MONGODB_URL` are set; CI now starts both services.
+
+### Changed
+- `RedisAdapter` is restructured around a `RedisKeys` helper and batched reads (`MGET`, pipelined `ZRANGE`) instead of one request per entity.
+
+### Fixed
+- `products.list({ categoryId: null })` returned nothing in the SQL adapters (`category_id = NULL`); it now matches uncategorized products, and Redis supports it too.
+- `RedisAdapter` populates `Product.images` (it was always empty, which also made storage cleanup on `products.delete` a no-op for Redis).
+- Redis and MongoDB now match the SQL cascade rules: deleting a product deletes its images, and deleting a category sets `categoryId` / `parentId` to null on its products and child categories.
+
 ## [0.1.2] - 2026-10-05
 
 ### Added

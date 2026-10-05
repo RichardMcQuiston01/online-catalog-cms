@@ -2,16 +2,9 @@
 
 Completed work is tracked in [CHANGELOG.md](CHANGELOG.md). What's left:
 
-- [ ] Integration tests for the PostgreSQL/MySQL/Redis/MongoDB adapters:
-      only the SQLite adapter has tests today. Add tests for the others
-      (skipped unless the relevant env vars are set), then run them
-      against service containers in CI.
-- [ ] Redis and MongoDB referential behavior: unlike the SQL adapters
-      (`ON DELETE CASCADE` / `SET NULL`), deleting a product leaves its
-      images behind, deleting a category leaves dangling `categoryId` /
-      `parentId` references, and `RedisProductRepository` never populates
-      `Product.images` (so storage cleanup on `products.delete` is a no-op
-      there).
+- [ ] Integration tests for the PostgreSQL and MySQL adapters: run the
+      shared contract in `adapterContract.ts` against service containers in
+      CI (SQLite, Redis and MongoDB already do).
 - [ ] Versioned migration runner: `BaseSQLAdapter.initialize()` replays the
       single embedded migration on every start and ignores `occ_migration`.
       Track applied versions so a second migration can be added without

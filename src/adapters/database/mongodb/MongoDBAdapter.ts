@@ -50,6 +50,12 @@ function loadDriver(): MongoClientConstructor {
   }
 }
 
+const COLLECTION = {
+  product: 'occ_product',
+  category: 'occ_category',
+  image: 'occ_image',
+} as const;
+
 interface ProductDoc {
   _id: string;
   name: string;
@@ -125,14 +131,15 @@ export class MongoDBAdapter implements DatabaseAdapter {
     await this.client.connect();
     const db = this.client.db(this.dbName);
     await db
-      .collection('occ_product')
+      .collection(COLLECTION.product)
       .createIndex({ slug: 1 }, { unique: true });
-    await db.collection('occ_product').createIndex({ categoryId: 1 });
+    await db.collection(COLLECTION.product).createIndex({ categoryId: 1 });
     await db
-      .collection('occ_category')
+      .collection(COLLECTION.category)
       .createIndex({ slug: 1 }, { unique: true });
+    await db.collection(COLLECTION.category).createIndex({ parentId: 1 });
     await db
-      .collection('occ_image')
+      .collection(COLLECTION.image)
       .createIndex({ productId: 1, sortOrder: 1 });
   }
 
@@ -157,11 +164,11 @@ class MongoProductRepository implements ProductRepository {
   constructor(private readonly db: () => Db) {}
 
   private col(): Collection<ProductDoc> {
-    return this.db().collection<ProductDoc>('occ_product');
+    return this.db().collection<ProductDoc>(COLLECTION.product);
   }
 
   private imgCol(): Collection<ImageDoc> {
-    return this.db().collection<ImageDoc>('occ_image');
+    return this.db().collection<ImageDoc>(COLLECTION.image);
   }
 
   /** Attaches images to many products using a single query (avoids N+1). */
@@ -241,7 +248,9 @@ class MongoProductRepository implements ProductRepository {
     return updated;
   }
 
+  /** Also deletes the product's images, like the SQL `ON DELETE CASCADE`. */
   async delete(id: string): Promise<void> {
+    await this.imgCol().deleteMany({ productId: id });
     await this.col().deleteOne({ _id: id });
   }
 
@@ -271,7 +280,7 @@ class MongoCategoryRepository implements CategoryRepository {
   constructor(private readonly db: () => Db) {}
 
   private col(): Collection<CategoryDoc> {
-    return this.db().collection<CategoryDoc>('occ_category');
+    return this.db().collection<CategoryDoc>(COLLECTION.category);
   }
 
   private toCategory(doc: CategoryDoc): Category {
@@ -327,7 +336,15 @@ class MongoCategoryRepository implements CategoryRepository {
     return updated;
   }
 
+  /**
+   * Detaches the category from its products and child categories, like the
+   * SQL `ON DELETE SET NULL`.
+   */
   async delete(id: string): Promise<void> {
+    await this.db()
+      .collection<ProductDoc>(COLLECTION.product)
+      .updateMany({ categoryId: id }, { $set: { categoryId: null } });
+    await this.col().updateMany({ parentId: id }, { $set: { parentId: null } });
     await this.col().deleteOne({ _id: id });
   }
 
@@ -352,7 +369,7 @@ class MongoImageRepository implements ImageRepository {
   constructor(private readonly db: () => Db) {}
 
   private col(): Collection<ImageDoc> {
-    return this.db().collection<ImageDoc>('occ_image');
+    return this.db().collection<ImageDoc>(COLLECTION.image);
   }
 
   async create(input: CreateImageInput): Promise<Image> {

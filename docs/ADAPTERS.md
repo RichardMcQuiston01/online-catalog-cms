@@ -52,7 +52,7 @@ const db = new RedisAdapter({
 });
 ```
 
-Redis stores each product, category and image as a JSON string (`occ:product:{id}`) with set and sorted-set indexes. Suitable for read-heavy catalogs with simple filter needs.
+Redis stores each product, category and image as a JSON string (`occ:product:{id}`) with set and sorted-set indexes. Suitable for read-heavy catalogs with simple filter needs. Redis has no foreign keys, so the adapter mimics them: deleting a product deletes its images, and deleting a category detaches it from its products and child categories.
 
 ### MongoDB
 
@@ -65,7 +65,7 @@ const db = new MongoDBAdapter({
 });
 ```
 
-Collections: `occ_product`, `occ_category`, `occ_image`. Indexes are created on `initialize()`.
+Collections: `occ_product`, `occ_category`, `occ_image`. Indexes are created on `initialize()`. Like Redis, the adapter reproduces the SQL cascade rules on delete (product → images, category → products and child categories); these writes are not transactional.
 
 ## Storage Adapters
 
