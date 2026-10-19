@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DatabaseAdapter } from '../../interfaces/DatabaseAdapter.js';
 import { document, paragraph, text } from '../../rich-text/builders.js';
+import type { ProductFilter } from '../../types/product.js';
 
 /** A fresh, isolated adapter plus a hook that deletes everything it wrote. */
 export interface AdapterFixture {
@@ -138,6 +139,61 @@ export function describeDatabaseAdapterContract(
         expect(await db.products.list({ search: '.*' })).toHaveLength(0);
       });
 
+      it('treats % and _ in a search as literal characters', async () => {
+        await db.products.create({ name: 'Plain', price: 1, description });
+        await db.products.create({
+          name: '100% Cotton',
+          price: 1,
+          description,
+        });
+        await db.products.create({ name: 'snake_case', price: 1, description });
+
+        expect(await db.products.list({ search: '%' })).toHaveLength(1);
+        expect(
+          (await db.products.list({ search: '100%' })).map((p) => p.name),
+        ).toEqual(['100% Cotton']);
+        expect(
+          (await db.products.list({ search: 'e_c' })).map((p) => p.name),
+        ).toEqual(['snake_case']);
+        expect(await db.products.list({ search: '_' })).toHaveLength(1);
+      });
+
+      it('returns an empty page for limit 0 and rejects invalid pagination', async () => {
+        await db.products.create({ name: 'One', price: 1, description });
+
+        expect(await db.products.list({ limit: 0 })).toEqual([]);
+        for (const filter of [
+          { limit: -1 },
+          { limit: 1.5 },
+          { limit: Number.NaN },
+          { limit: 1_000_000 },
+          { offset: -1 },
+          { offset: 0.5 },
+          { limit: '5' as unknown as number },
+        ]) {
+          await expect(db.products.list(filter)).rejects.toThrow(
+            /Invalid (limit|offset) filter/,
+          );
+        }
+      });
+
+      it('rejects filter values that are not plain strings and numbers', async () => {
+        await db.products.create({ name: 'One', price: 1, description });
+
+        for (const filter of [
+          { categoryId: { $ne: null } },
+          { categoryId: ['a'] },
+          { minPrice: { $gt: 0 } },
+          { maxPrice: Number.NaN },
+          { minPrice: Number.POSITIVE_INFINITY },
+          { search: { $regex: '.*' } },
+        ]) {
+          await expect(
+            db.products.list(filter as unknown as ProductFilter),
+          ).rejects.toThrow(/Invalid \w+ filter/);
+        }
+      });
+
       it('filters by price range', async () => {
         for (const price of [100, 500, 900]) {
           await db.products.create({
@@ -269,6 +325,28 @@ export function describeDatabaseAdapterContract(
         await expect(
           db.categories.update('missing', { name: 'x' }),
         ).rejects.toThrow();
+      });
+
+      it('treats % and _ in a category search as literal characters', async () => {
+        await db.categories.create({ name: 'Plain' });
+        await db.categories.create({ name: '50% Off' });
+
+        expect(
+          (await db.categories.list({ search: '%' })).map((c) => c.name),
+        ).toEqual(['50% Off']);
+        expect(await db.categories.list({ search: '_' })).toEqual([]);
+      });
+
+      it('applies the same pagination rules to categories', async () => {
+        await db.categories.create({ name: 'One' });
+
+        expect(await db.categories.list({ limit: 0 })).toEqual([]);
+        await expect(db.categories.list({ limit: -1 })).rejects.toThrow(
+          'Invalid limit filter',
+        );
+        await expect(
+          db.categories.list({ parentId: { $ne: null } as never }),
+        ).rejects.toThrow('Invalid parentId filter');
       });
 
       it('lists by parent and search, ordered by name', async () => {

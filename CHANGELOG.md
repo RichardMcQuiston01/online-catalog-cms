@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking for S3 users who relied on the default:** `S3Adapter` now defaults `publicRead` to `false` and sends no `ACL` unless `publicRead: true` (or a per-upload `public: true`) is set. Set `publicRead: true` to keep the old behavior on buckets that still allow ACLs.
 - The `contentType` field of `images.upload()` is ignored; the type is detected from the file.
 - Relative image `src` and link `href` values without a leading `/` (for example `photo.jpg`) are no longer valid in rich text; use an absolute `http(s)` URL or a root-relative path.
+- `list()` returns at most 100 rows by default and rejects a `limit` above 1000. Page with `offset` to read more. Previously an unbounded call returned every row.
 
 ### Fixed
 - `new OnlineCatalog({ db: new SQLiteAdapter(...) })` no longer throws `Call initialize() first`. `SQLiteAdapter` builds its repositories in the constructor and opens the database on first use; `initialize()` only migrates, and calling it again reuses the open connection instead of leaking a new one.
@@ -22,12 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `S3Adapter` uploads no longer fail with `AccessControlListNotSupported` on buckets created since April 2023, which have ACLs disabled.
 - `LocalStorageAdapter.upload()` removes the partial file when a stream fails midway and refuses to write outside the upload directory.
 - `products.delete()` and `images.delete()` remove the database row before the stored files. A database failure no longer leaves rows pointing at files that are already gone; a leftover file is only wasted space. The Redis adapter deletes a product and its images in one `MULTI`/`EXEC` (and creates a product atomically), and the MongoDB adapter deletes the product before its images.
+- `list()` on every adapter validates its filter the same way: `limit` and `offset` must be integers (`limit: 0` returns an empty page instead of everything on MongoDB; negative values no longer throw on SQL but read from the end on Redis), `minPrice`/`maxPrice` must be finite numbers, and `categoryId`/`parentId` must be a string or `null`. Failures throw a `ValidationError` naming the field.
+- Searching with `%` or `_` matches those characters literally on the SQL adapters instead of acting as wildcards, and PostgreSQL search is now case-insensitive like the other adapters.
 
 ### Security
 - `RedisAdapter.verify()` and `MongoDBAdapter.verify()` return a fixed message instead of the driver error, which can contain the server address. The original error goes to `onError`.
 - Storage `delete()` only removes objects whose key has the shape `generateStorageKey` produces (`{uuid}-{safe-name}`). A URL stored through `images.addUrl()` that points under `baseUrl` can no longer delete an arbitrary S3 object or any other file in the upload directory, and URLs with a query string or fragment are ignored.
 - `images.upload()` accepts only JPEG, PNG, GIF, WebP and AVIF, detected from the file's content instead of its name or declared type, so HTML or SVG can no longer be stored as an "image" under the public base URL. The stored extension and `Content-Type` follow the detected format. SVG is rejected.
 - Rich-text validation rejects `javascript:`, `data:`, `vbscript:` and protocol-relative link/image URLs (only `http(s)` URLs and root-relative paths like `/uploads/a.jpg` pass), restricts `cssClass` to letters, digits, spaces, `-` and `_`, requires heading levels to be integers 1 to 6, and caps link nesting depth (8), node count (10,000) and serialized size (1,000,000 characters). Deeply nested documents no longer throw `RangeError`.
+- MongoDB `list()` no longer passes filter objects into the query, so `{ categoryId: { $ne: null } }` or a `$regex` object from a nested query string is rejected instead of changing the query.
 
 ### Removed
 - The three unused Python wheels that were committed at the repository root (`dnspython`, `pymongo`, `pymongo_inmemory`), and `*.whl` is now ignored. MongoDB tests keep using the `mongo:7` service container in CI.
