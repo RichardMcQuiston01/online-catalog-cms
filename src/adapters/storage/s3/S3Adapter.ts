@@ -14,7 +14,16 @@ export interface S3Config {
   endpoint?: string;
   accessKeyId: string;
   secretAccessKey: string;
-  /** Whether objects should default to public-read ACL. Defaults to true. */
+  /**
+   * Whether uploads are sent with the `public-read` ACL. Defaults to `false`:
+   * objects are uploaded without an ACL and stay private unless the bucket
+   * policy or a CDN exposes them.
+   *
+   * Buckets created since April 2023 use "Bucket owner enforced", which
+   * disables ACLs and rejects `public-read`. Grant public reads with a bucket
+   * policy or CloudFront there, and only set this to `true` on buckets (or
+   * S3-compatible services) that still accept object ACLs.
+   */
   publicRead?: boolean;
 }
 
@@ -50,7 +59,7 @@ export class S3Adapter implements StorageAdapter {
   constructor(config: S3Config) {
     this.aws = loadDriver();
     this.bucket = config.bucket;
-    this.publicRead = config.publicRead ?? true;
+    this.publicRead = config.publicRead ?? false;
 
     this.client = new this.aws.S3Client({
       region: config.region,
@@ -83,7 +92,8 @@ export class S3Adapter implements StorageAdapter {
       Key: key,
       Body: file,
       ContentType: contentType,
-      ACL: isPublic ? 'public-read' : 'private',
+      // Omit the ACL unless asked: ACLs are disabled on current AWS buckets.
+      ...(isPublic ? { ACL: 'public-read' } : {}),
     });
 
     await this.client.send(command);
