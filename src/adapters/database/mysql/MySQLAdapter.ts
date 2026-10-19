@@ -1,3 +1,4 @@
+import type { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 import type {
   CategoryRepository,
@@ -5,6 +6,10 @@ import type {
   ImageRepository,
   ProductRepository,
 } from '../../../interfaces/DatabaseAdapter.js';
+import {
+  type ConnectionErrorHandler,
+  resolveErrorHandler,
+} from '../errorHandler.js';
 import {
   BaseSQLAdapter,
   type SQLRunner,
@@ -20,15 +25,22 @@ export interface MySQLConfig {
   user: string;
   password: string;
   database: string;
+  /**
+   * Called when the pool emits `error`, e.g. the server closed an idle
+   * connection. Defaults to logging with `console.error`.
+   */
+  onError?: ConnectionErrorHandler;
 }
 
 type Pool = import('mysql2/promise').Pool;
 
-function loadDriver(): { createPool: (config: MySQLConfig) => Pool } {
+function loadDriver(): {
+  createPool: (config: Omit<MySQLConfig, 'onError'>) => Pool;
+} {
   try {
     const require = createRequire(import.meta.url);
     return require('mysql2/promise') as {
-      createPool: (config: MySQLConfig) => Pool;
+      createPool: (config: Omit<MySQLConfig, 'onError'>) => Pool;
     };
   } catch {
     throw new Error('mysql2 is not installed. Run: bun add mysql2');
@@ -69,7 +81,13 @@ export class MySQLAdapter extends BaseSQLAdapter implements DatabaseAdapter {
   constructor(config: MySQLConfig) {
     super();
     const { createPool } = loadDriver();
-    this.pool = createPool(config);
+    const { onError, ...poolConfig } = config;
+    this.pool = createPool(poolConfig);
+    // Without a listener, an `error` event on the pool exits the process.
+    (this.pool as unknown as EventEmitter).on(
+      'error',
+      resolveErrorHandler('MySQL', onError),
+    );
     const runner = new MySQLSQLRunner(this.pool);
     this.db = runner;
     this.products = new SQLProductRepository(runner);
