@@ -10,12 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `maxUploadBytes` option on `OnlineCatalog` (default 10 MiB) and `ImageService`. Larger uploads, including endless streams, are rejected with a `ValidationError` before anything is written. `ValidationError` is exported.
 - `ProductService.create()` and `update()` validate `description` with `assertRichTextDocument` and throw a `ValidationError` (field `description`) that names the offending node. `assertRichTextDocument` errors now say what is wrong and where.
+- `getBySlug(slug)` on `products` and `categories` (services and repositories), so a storefront can resolve a URL without listing the table.
+- `ValidationError` and `SlugConflictError`. The services now own the domain rules, so every adapter behaves the same: non-negative integer `price`; `name`/`sku` length (255) and `altText` length (500); `metadata` must be plain JSON, at most 65,536 characters, without `$`-prefixed or dotted keys, and is stored as normalized JSON; image `url`s must be `http(s)` or root-relative. See docs/API.md.
 
 ### Changed
 - **Breaking for S3 users who relied on the default:** `S3Adapter` now defaults `publicRead` to `false` and sends no `ACL` unless `publicRead: true` (or a per-upload `public: true`) is set. Set `publicRead: true` to keep the old behavior on buckets that still allow ACLs.
 - The `contentType` field of `images.upload()` is ignored; the type is detected from the file.
 - Relative image `src` and link `href` values without a leading `/` (for example `photo.jpg`) are no longer valid in rich text; use an absolute `http(s)` URL or a root-relative path.
 - `list()` returns at most 100 rows by default and rejects a `limit` above 1000. Page with `offset` to read more. Previously an unbounded call returned every row.
+- **Custom adapters:** `ProductRepository` and `CategoryRepository` gain a required `getBySlug(slug)` method. `ProductService` and `ImageService` take an options object with the repositories they use for existence checks (`OnlineCatalog` wires these for you).
 
 ### Fixed
 - `new OnlineCatalog({ db: new SQLiteAdapter(...) })` no longer throws `Call initialize() first`. `SQLiteAdapter` builds its repositories in the constructor and opens the database on first use; `initialize()` only migrates, and calling it again reuses the open connection instead of leaking a new one.
@@ -25,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `products.delete()` and `images.delete()` remove the database row before the stored files. A database failure no longer leaves rows pointing at files that are already gone; a leftover file is only wasted space. The Redis adapter deletes a product and its images in one `MULTI`/`EXEC` (and creates a product atomically), and the MongoDB adapter deletes the product before its images.
 - `list()` on every adapter validates its filter the same way: `limit` and `offset` must be integers (`limit: 0` returns an empty page instead of everything on MongoDB; negative values no longer throw on SQL but read from the end on Redis), `minPrice`/`maxPrice` must be finite numbers, and `categoryId`/`parentId` must be a string or `null`. Failures throw a `ValidationError` naming the field.
 - Searching with `%` or `_` matches those characters literally on the SQL adapters instead of acting as wildcards, and PostgreSQL search is now case-insensitive like the other adapters.
+- Slugs: `Café Latte` becomes `cafe-latte` instead of `caf-latte`, non-Latin names keep their letters instead of becoming an empty slug, slugs are capped at 255 characters, an empty slug is rejected with a clear error, and a duplicate name gets `-2`, `-3`, ... instead of a raw driver error. Redis now enforces slug uniqueness (`SET NX` index, backfilled on `initialize()`).
+- Category trees can no longer cycle: a category cannot be its own parent or the parent of one of its ancestors, and `parentId`, a product's `categoryId` and an image's `productId` must exist on every adapter, as the SQL foreign keys already required.
 
 ### Security
 - `RedisAdapter.verify()` and `MongoDBAdapter.verify()` return a fixed message instead of the driver error, which can contain the server address. The original error goes to `onError`.

@@ -11,3 +11,14 @@ export class ValidationError extends Error {
     this.name = 'ValidationError';
   }
 }
+
+/** Thrown when a slug is already used by another product or category. */
+export class SlugConflictError extends ValidationError {
+  constructor(readonly slug: string) {
+    super(
+      `The slug "${slug}" is already in use. Choose a different slug, or omit it to have one generated from the name.`,
+      'slug',
+    );
+    this.name = 'SlugConflictError';
+  }
+}

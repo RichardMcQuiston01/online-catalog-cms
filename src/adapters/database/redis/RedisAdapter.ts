@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { SlugConflictError } from '../../../errors.js';
 import type {
   CategoryRepository,
   DatabaseAdapter,
@@ -89,6 +90,16 @@ class RedisKeys {
     return `${this.prefix}:image:${id}`;
   }
 
+  /** Maps a product slug to the id that owns it; `SET NX` keeps slugs unique. */
+  productSlug(slug: string): string {
+    return `${this.prefix}:slug:product:${slug}`;
+  }
+
+  /** Maps a category slug to the id that owns it. */
+  categorySlug(slug: string): string {
+    return `${this.prefix}:slug:category:${slug}`;
+  }
+
   imagesOfProduct(productId: string): string {
     return `${this.prefix}:images:product:${productId}`;
   }
@@ -117,12 +128,15 @@ function parseEntity<T extends object>(raw: string, dateFields: string[]): T {
  *   {prefix}:products:cat:{catId}  — set of product IDs by category
  *   {prefix}:category:{id}         — category JSON
  *   {prefix}:categories:all        — set of all category IDs
+ *   {prefix}:slug:product:{slug}   — id of the product that owns the slug
+ *   {prefix}:slug:category:{slug}  — id of the category that owns the slug
  *   {prefix}:image:{id}            — image JSON
  *   {prefix}:images:product:{pid}  — sorted set of image IDs by sort_order
  */
 export class RedisAdapter implements DatabaseAdapter {
   private readonly client: Redis;
   private readonly onError: ConnectionErrorHandler;
+  private readonly slugIndex: RedisSlugIndex;
 
   readonly products: ProductRepository;
   readonly categories: CategoryRepository;
@@ -134,16 +148,28 @@ export class RedisAdapter implements DatabaseAdapter {
     this.onError = resolveErrorHandler('Redis', config.onError);
     this.client.on('error', this.onError);
     const keys = new RedisKeys(config.keyPrefix ?? 'occ');
+    this.slugIndex = new RedisSlugIndex(this.client, keys);
 
     const images = new RedisImageRepository(this.client, keys);
     this.images = images;
-    const products = new RedisProductRepository(this.client, keys, images);
+    const products = new RedisProductRepository(
+      this.client,
+      keys,
+      images,
+      this.slugIndex,
+    );
     this.products = products;
-    this.categories = new RedisCategoryRepository(this.client, keys, products);
+    this.categories = new RedisCategoryRepository(
+      this.client,
+      keys,
+      products,
+      this.slugIndex,
+    );
   }
 
   async initialize(): Promise<void> {
     await this.client.ping();
+    await this.slugIndex.backfill();
   }
 
   async verify(): Promise<VerificationResult> {
@@ -164,6 +190,66 @@ export class RedisAdapter implements DatabaseAdapter {
   async close(): Promise<void> {
     // QUIT cannot complete without a connection; drop the socket instead.
     await this.client.quit().catch(() => this.client.disconnect());
+  }
+}
+
+/**
+ * Enforces slug uniqueness, which Redis has no constraint for. A slug is
+ * claimed with `SET NX` before the entity is written, so two concurrent
+ * creates cannot both succeed.
+ */
+class RedisSlugIndex {
+  constructor(
+    private readonly client: Redis,
+    private readonly keys: RedisKeys,
+  ) {}
+
+  /** Claims `slug` for `id`; throws {@link SlugConflictError} if taken by another id. */
+  async claim(key: string, slug: string, id: string): Promise<void> {
+    const claimed = await this.client.set(key, id, 'NX');
+    if (claimed === 'OK') return;
+    if ((await this.client.get(key)) !== id) throw new SlugConflictError(slug);
+  }
+
+  async release(key: string): Promise<void> {
+    await this.client.del(key);
+  }
+
+  async ownerOf(key: string): Promise<string | null> {
+    return this.client.get(key);
+  }
+
+  /**
+   * Indexes slugs of entities written before the index existed. Idempotent:
+   * `NX` never overwrites a claim, so it is safe on every start.
+   */
+  async backfill(): Promise<void> {
+    const productIds = await this.client.smembers(this.keys.allProducts());
+    const categoryIds = await this.client.smembers(this.keys.allCategories());
+    await this.backfillKind(
+      productIds,
+      (id) => this.keys.product(id),
+      (slug) => this.keys.productSlug(slug),
+    );
+    await this.backfillKind(
+      categoryIds,
+      (id) => this.keys.category(id),
+      (slug) => this.keys.categorySlug(slug),
+    );
+  }
+
+  private async backfillKind(
+    ids: string[],
+    entityKey: (id: string) => string,
+    slugKey: (slug: string) => string,
+  ): Promise<void> {
+    if (ids.length === 0) return;
+    const raws = await this.client.mget(ids.map(entityKey));
+    for (const raw of raws) {
+      if (!raw) continue;
+      const entity = JSON.parse(raw) as { id: string; slug: string };
+      await this.client.set(slugKey(entity.slug), entity.id, 'NX');
+    }
   }
 }
 
@@ -198,6 +284,7 @@ class RedisProductRepository implements ProductRepository {
     private readonly client: Redis,
     private readonly keys: RedisKeys,
     private readonly images: RedisImageRepository,
+    private readonly slugs: RedisSlugIndex,
   ) {}
 
   /** Persists a product without its images, which live under their own keys. */
@@ -244,22 +331,35 @@ class RedisProductRepository implements ProductRepository {
       updatedAt: now,
     };
 
-    const tx = this.client.multi();
-    tx.set(
-      this.keys.product(product.id),
-      JSON.stringify({ ...product, images: [] }),
-    );
-    tx.sadd(this.keys.allProducts(), product.id);
-    if (product.categoryId) {
-      tx.sadd(this.keys.productsInCategory(product.categoryId), product.id);
+    const slugKey = this.keys.productSlug(product.slug);
+    await this.slugs.claim(slugKey, product.slug, product.id);
+
+    try {
+      const tx = this.client.multi();
+      tx.set(
+        this.keys.product(product.id),
+        JSON.stringify({ ...product, images: [] }),
+      );
+      tx.sadd(this.keys.allProducts(), product.id);
+      if (product.categoryId) {
+        tx.sadd(this.keys.productsInCategory(product.categoryId), product.id);
+      }
+      await execTransaction(tx);
+    } catch (error) {
+      await this.slugs.release(slugKey);
+      throw error;
     }
-    await execTransaction(tx);
     return product;
   }
 
   async get(id: string): Promise<Product | null> {
     const [product] = await this.loadMany([id]);
     return product ?? null;
+  }
+
+  async getBySlug(slug: string): Promise<Product | null> {
+    const id = await this.slugs.ownerOf(this.keys.productSlug(slug));
+    return id ? this.get(id) : null;
   }
 
   async update(id: string, input: UpdateProductInput): Promise<Product> {
@@ -271,7 +371,19 @@ class RedisProductRepository implements ProductRepository {
       ...mergeProductUpdate(existing, input),
       updatedAt: new Date(),
     };
-    await this.save(updated);
+
+    const slugChanged = updated.slug !== existing.slug;
+    const newSlugKey = this.keys.productSlug(updated.slug);
+    if (slugChanged) await this.slugs.claim(newSlugKey, updated.slug, id);
+    try {
+      await this.save(updated);
+    } catch (error) {
+      if (slugChanged) await this.slugs.release(newSlugKey);
+      throw error;
+    }
+    if (slugChanged) {
+      await this.slugs.release(this.keys.productSlug(existing.slug));
+    }
 
     if (existing.categoryId !== updated.categoryId) {
       if (existing.categoryId) {
@@ -302,6 +414,7 @@ class RedisProductRepository implements ProductRepository {
     }
     tx.del(this.keys.imagesOfProduct(id));
     tx.del(this.keys.product(id));
+    tx.del(this.keys.productSlug(existing.slug));
     tx.srem(this.keys.allProducts(), id);
     if (existing.categoryId) {
       tx.srem(this.keys.productsInCategory(existing.categoryId), id);
@@ -357,6 +470,7 @@ class RedisCategoryRepository implements CategoryRepository {
     private readonly client: Redis,
     private readonly keys: RedisKeys,
     private readonly products: RedisProductRepository,
+    private readonly slugs: RedisSlugIndex,
   ) {}
 
   private async save(category: Category): Promise<void> {
@@ -390,14 +504,29 @@ class RedisCategoryRepository implements CategoryRepository {
       updatedAt: now,
     };
 
-    await this.save(category);
-    await this.client.sadd(this.keys.allCategories(), category.id);
+    const slugKey = this.keys.categorySlug(category.slug);
+    await this.slugs.claim(slugKey, category.slug, category.id);
+
+    try {
+      const tx = this.client.multi();
+      tx.set(this.keys.category(category.id), JSON.stringify(category));
+      tx.sadd(this.keys.allCategories(), category.id);
+      await execTransaction(tx);
+    } catch (error) {
+      await this.slugs.release(slugKey);
+      throw error;
+    }
     return category;
   }
 
   async get(id: string): Promise<Category | null> {
     const raw = await this.client.get(this.keys.category(id));
     return raw ? parseEntity<Category>(raw, ['createdAt', 'updatedAt']) : null;
+  }
+
+  async getBySlug(slug: string): Promise<Category | null> {
+    const id = await this.slugs.ownerOf(this.keys.categorySlug(slug));
+    return id ? this.get(id) : null;
   }
 
   async update(id: string, input: UpdateCategoryInput): Promise<Category> {
@@ -409,11 +538,24 @@ class RedisCategoryRepository implements CategoryRepository {
       ...mergeCategoryUpdate(existing, input),
       updatedAt: new Date(),
     };
-    await this.save(updated);
+
+    const slugChanged = updated.slug !== existing.slug;
+    const newSlugKey = this.keys.categorySlug(updated.slug);
+    if (slugChanged) await this.slugs.claim(newSlugKey, updated.slug, id);
+    try {
+      await this.save(updated);
+    } catch (error) {
+      if (slugChanged) await this.slugs.release(newSlugKey);
+      throw error;
+    }
+    if (slugChanged) {
+      await this.slugs.release(this.keys.categorySlug(existing.slug));
+    }
     return updated;
   }
 
   async delete(id: string): Promise<void> {
+    const existing = await this.get(id);
     await this.products.clearCategory(id);
     for (const child of await this.loadAll()) {
       if (child.parentId === id) {
@@ -421,6 +563,8 @@ class RedisCategoryRepository implements CategoryRepository {
       }
     }
     await this.client.del(this.keys.category(id));
+    if (existing)
+      await this.slugs.release(this.keys.categorySlug(existing.slug));
     await this.client.srem(this.keys.allCategories(), id);
   }
 

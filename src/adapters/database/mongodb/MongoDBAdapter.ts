@@ -249,6 +249,11 @@ class MongoProductRepository implements ProductRepository {
     return this.toProduct(doc);
   }
 
+  async getBySlug(slug: string): Promise<Product | null> {
+    const doc = await this.col().findOne({ slug: String(slug) });
+    return doc ? this.toProduct(doc) : null;
+  }
+
   async update(id: string, input: UpdateProductInput): Promise<Product> {
     const existing = await this.get(id);
     if (!existing) throw new Error(`Product not found: ${id}`);
@@ -345,6 +350,11 @@ class MongoCategoryRepository implements CategoryRepository {
 
   async get(id: string): Promise<Category | null> {
     const doc = await this.col().findOne({ _id: id });
+    return doc ? this.toCategory(doc) : null;
+  }
+
+  async getBySlug(slug: string): Promise<Category | null> {
+    const doc = await this.col().findOne({ slug: String(slug) });
     return doc ? this.toCategory(doc) : null;
   }
 
