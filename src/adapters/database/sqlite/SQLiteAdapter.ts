@@ -91,50 +91,75 @@ async function createSQLiteInstance(filename: string): Promise<SQLiteInstance> {
   }
 }
 
-/** SQLite database adapter. Uses bun:sqlite in Bun, better-sqlite3 in Node.js. */
-export class SQLiteAdapter extends BaseSQLAdapter implements DatabaseAdapter {
-  private runner?: SQLRunner;
-  private closeHandle?: () => void;
-  private readonly config: SQLiteConfig;
+/**
+ * Defers opening the database until the first statement runs, so the adapter
+ * (and its repositories) can be constructed synchronously. The connection is
+ * opened once; concurrent first calls share the same attempt.
+ */
+class LazySQLiteRunner implements SQLRunner {
+  private instance?: Promise<SQLiteInstance>;
 
-  private _products?: ProductRepository;
-  private _categories?: CategoryRepository;
-  private _images?: ImageRepository;
+  constructor(private readonly filename: string) {}
+
+  /** Opens the database if needed and returns the live instance. */
+  connect(): Promise<SQLiteInstance> {
+    this.instance ??= createSQLiteInstance(this.filename).catch(
+      (error: unknown) => {
+        // Let a later call retry instead of caching the failure.
+        this.instance = undefined;
+        throw error;
+      },
+    );
+    return this.instance;
+  }
+
+  async run(sql: string, params?: unknown[]): Promise<void> {
+    return (await this.connect()).runner.run(sql, params);
+  }
+
+  async all<T>(sql: string, params?: unknown[]): Promise<T[]> {
+    return (await this.connect()).runner.all<T>(sql, params);
+  }
+
+  async get<T>(sql: string, params?: unknown[]): Promise<T | undefined> {
+    return (await this.connect()).runner.get<T>(sql, params);
+  }
+
+  /** Closes the connection if one was opened; safe to call repeatedly. */
+  async close(): Promise<void> {
+    const pending = this.instance;
+    this.instance = undefined;
+    if (!pending) return;
+    const opened = await pending.catch(() => undefined);
+    opened?.close();
+  }
+}
+
+/**
+ * SQLite database adapter. Uses bun:sqlite in Bun, better-sqlite3 in Node.js.
+ * The repositories are usable straight after construction; the database is
+ * opened on first use and `initialize()` only runs the migrations.
+ */
+export class SQLiteAdapter extends BaseSQLAdapter implements DatabaseAdapter {
+  protected readonly db: LazySQLiteRunner;
+  readonly products: ProductRepository;
+  readonly categories: CategoryRepository;
+  readonly images: ImageRepository;
 
   constructor(config: SQLiteConfig) {
     super();
-    this.config = config;
+    this.db = new LazySQLiteRunner(config.filename);
+    this.products = new SQLProductRepository(this.db);
+    this.categories = new SQLCategoryRepository(this.db);
+    this.images = new SQLImageRepository(this.db);
   }
 
-  protected get db(): SQLRunner {
-    if (!this.runner) throw new Error('Call initialize() first');
-    return this.runner;
-  }
-
-  get products(): ProductRepository {
-    if (!this._products) throw new Error('Call initialize() first');
-    return this._products;
-  }
-
-  get categories(): CategoryRepository {
-    if (!this._categories) throw new Error('Call initialize() first');
-    return this._categories;
-  }
-
-  get images(): ImageRepository {
-    if (!this._images) throw new Error('Call initialize() first');
-    return this._images;
-  }
-
-  /** Opens the database with whichever SQLite driver is available, then migrates. */
+  /**
+   * Opens the database (a no-op if it is already open) and migrates it.
+   * Calling it again never opens a second connection.
+   */
   override async initialize(): Promise<void> {
-    const { runner, close } = await createSQLiteInstance(this.config.filename);
-    this.runner = runner;
-    this._products = new SQLProductRepository(runner);
-    this._categories = new SQLCategoryRepository(runner);
-    this._images = new SQLImageRepository(runner);
-    this.closeHandle = close;
-
+    await this.db.connect();
     await super.initialize();
   }
 
@@ -147,6 +172,6 @@ export class SQLiteAdapter extends BaseSQLAdapter implements DatabaseAdapter {
   }
 
   async close(): Promise<void> {
-    this.closeHandle?.();
+    await this.db.close();
   }
 }

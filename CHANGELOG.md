@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `new OnlineCatalog({ db: new SQLiteAdapter(...) })` no longer throws `Call initialize() first`. `SQLiteAdapter` builds its repositories in the constructor and opens the database on first use; `initialize()` only migrates, and calling it again reuses the open connection instead of leaking a new one.
+
 ### Removed
 - The three unused Python wheels that were committed at the repository root (`dnspython`, `pymongo`, `pymongo_inmemory`), and `*.whl` is now ignored. MongoDB tests keep using the `mongo:7` service container in CI.
 
