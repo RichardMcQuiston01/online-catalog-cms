@@ -1,12 +1,16 @@
-/**
- * Schema for migration 001, embedded as a string because only `dist/` is
- * published to npm and the bundler does not copy `.sql` files. Keep it in
- * sync with `001_initial.sql` (a test enforces this); that file is the
- * copy to run by hand when migrating without `initialize()`.
- */
-export const INITIAL_MIGRATION_SQL = `-- Migration 001: initial schema
+import type { Migration } from './types.js';
 
-CREATE TABLE IF NOT EXISTS occ_category (
+/**
+ * Migration 001: the initial schema. The statements are the same for every
+ * dialect. The runner records the version in `occ_migration` itself, so the
+ * `INSERT` that `001_initial.sql` ends with (for running it by hand) is not
+ * part of the list. A test keeps this file and the `.sql` file in step.
+ */
+export const initialMigration: Migration = {
+  version: 1,
+  description: 'initial schema',
+  statements: [
+    `CREATE TABLE IF NOT EXISTS occ_category (
   id          VARCHAR(36)   NOT NULL PRIMARY KEY,
   name        VARCHAR(255)  NOT NULL,
   slug        VARCHAR(255)  NOT NULL UNIQUE,
@@ -14,9 +18,8 @@ CREATE TABLE IF NOT EXISTS occ_category (
   metadata    TEXT          NOT NULL DEFAULT '{}',
   created_at  TIMESTAMP     NOT NULL,
   updated_at  TIMESTAMP     NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS occ_product (
+)`,
+    `CREATE TABLE IF NOT EXISTS occ_product (
   id          VARCHAR(36)   NOT NULL PRIMARY KEY,
   name        VARCHAR(255)  NOT NULL,
   slug        VARCHAR(255)  NOT NULL UNIQUE,
@@ -27,22 +30,18 @@ CREATE TABLE IF NOT EXISTS occ_product (
   metadata    TEXT          NOT NULL DEFAULT '{}',
   created_at  TIMESTAMP     NOT NULL,
   updated_at  TIMESTAMP     NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS occ_image (
+)`,
+    `CREATE TABLE IF NOT EXISTS occ_image (
   id          VARCHAR(36)   NOT NULL PRIMARY KEY,
   product_id  VARCHAR(36)   NOT NULL REFERENCES occ_product(id) ON DELETE CASCADE,
   url         TEXT          NOT NULL,
   alt_text    VARCHAR(500)  NOT NULL DEFAULT '',
   sort_order  INTEGER       NOT NULL DEFAULT 0,
   created_at  TIMESTAMP     NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS occ_migration (
+)`,
+    `CREATE TABLE IF NOT EXISTS occ_migration (
   version     INTEGER       NOT NULL PRIMARY KEY,
   applied_at  TIMESTAMP     NOT NULL
-);
-
-INSERT INTO occ_migration (version, applied_at) VALUES (1, CURRENT_TIMESTAMP)
-  ON CONFLICT (version) DO NOTHING;
-`;
+)`,
+  ],
+};

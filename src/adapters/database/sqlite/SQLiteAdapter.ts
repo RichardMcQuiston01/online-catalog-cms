@@ -11,16 +11,40 @@ import {
 import { SQLCategoryRepository } from '../relational/SQLCategoryRepository.js';
 import { SQLImageRepository } from '../relational/SQLImageRepository.js';
 import { SQLProductRepository } from '../relational/SQLProductRepository.js';
-import { INITIAL_MIGRATION_SQL } from '../relational/migrations/001_initial.js';
+import type { SQLDialect } from '../relational/migrations/index.js';
 
 export interface SQLiteConfig {
   /** Path to the SQLite database file. Use ':memory:' for an in-memory DB. */
   filename: string;
 }
 
+/**
+ * Both SQLite drivers are synchronous and share one connection, so a
+ * transaction is a `BEGIN` ... `COMMIT` around the work. Nothing else may
+ * use the connection while it runs, which holds for the migration runner.
+ */
+async function runInTransaction<T>(
+  runner: SQLRunner,
+  work: (tx: SQLRunner) => Promise<T>,
+): Promise<T> {
+  await runner.run('BEGIN');
+  try {
+    const result = await work(runner);
+    await runner.run('COMMIT');
+    return result;
+  } catch (error) {
+    await runner.run('ROLLBACK').catch(() => {});
+    throw error;
+  }
+}
+
 class BunSQLiteRunner implements SQLRunner {
   // biome-ignore lint/suspicious/noExplicitAny: bun:sqlite Database type
   constructor(private readonly db: any) {}
+
+  transaction<T>(work: (tx: SQLRunner) => Promise<T>): Promise<T> {
+    return runInTransaction(this, work);
+  }
 
   async run(sql: string, params: unknown[] = []): Promise<void> {
     this.db.run(sql, params);
@@ -38,6 +62,10 @@ class BunSQLiteRunner implements SQLRunner {
 class BetterSqliteRunner implements SQLRunner {
   // biome-ignore lint/suspicious/noExplicitAny: better-sqlite3 Database type
   constructor(private readonly db: any) {}
+
+  transaction<T>(work: (tx: SQLRunner) => Promise<T>): Promise<T> {
+    return runInTransaction(this, work);
+  }
 
   async run(sql: string, params: unknown[] = []): Promise<void> {
     this.db.prepare(sql).run(...params);
@@ -125,6 +153,10 @@ class LazySQLiteRunner implements SQLRunner {
     return (await this.connect()).runner.get<T>(sql, params);
   }
 
+  async transaction<T>(work: (tx: SQLRunner) => Promise<T>): Promise<T> {
+    return (await this.connect()).runner.transaction(work);
+  }
+
   /** Closes the connection if one was opened; safe to call repeatedly. */
   async close(): Promise<void> {
     const pending = this.instance;
@@ -163,8 +195,8 @@ export class SQLiteAdapter extends BaseSQLAdapter implements DatabaseAdapter {
     await super.initialize();
   }
 
-  protected get migrationSql(): string {
-    return INITIAL_MIGRATION_SQL;
+  protected get dialect(): SQLDialect {
+    return 'sqlite';
   }
 
   protected tableExistsQuery(table: string): string {

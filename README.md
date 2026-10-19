@@ -98,12 +98,13 @@ Database adapters (SQLite, PostgreSQL, MySQL/MariaDB, Redis, MongoDB) and storag
 
 ```ts
 await catalog.initialize();
-// Creates all tables and runs any pending migrations.
+// Creates all tables and applies the migrations recorded in `occ_migration`
+// that have not run yet, each in its own transaction.
 ```
 
 ### Manual Migrations
 
-The migration SQL is not shipped in the npm package (only `dist/` is published). Download [`001_initial.sql`](https://github.com/RichardMcQuiston01/online-catalog-cms/blob/main/src/adapters/database/relational/migrations/001_initial.sql) from the repository, run it with your preferred tool, then verify:
+The migration SQL is not shipped in the npm package (only `dist/` is published). Download [`001_initial.sql`](https://github.com/RichardMcQuiston01/online-catalog-cms/blob/main/src/adapters/database/relational/migrations/001_initial.sql) from the repository, run it with your preferred tool, then verify. The file records its version in `occ_migration`, so a later `initialize()` skips it and only applies migrations added after it:
 
 ```ts
 const result = await catalog.installer.verify();
