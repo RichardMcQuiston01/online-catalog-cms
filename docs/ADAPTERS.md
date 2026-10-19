@@ -111,9 +111,11 @@ const storage = new S3Adapter({
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   // For S3-compatible services, set a custom endpoint:
   endpoint: "https://my-minio.example.com",
-  publicRead: true, // optional, defaults to true
+  publicRead: false, // optional, defaults to false
 });
 ```
+
+Uploads are private by default: no ACL is sent, so an object is only readable if your bucket policy, CloudFront distribution or signed URLs allow it. Amazon S3 buckets created since April 2023 have ACLs disabled ("Bucket owner enforced") and reject `public-read`, so grant public reads with a bucket policy there. Set `publicRead: true` only for buckets or S3-compatible services that still accept object ACLs; it sends `ACL: "public-read"` on every upload.
 
 ### External URL
 
