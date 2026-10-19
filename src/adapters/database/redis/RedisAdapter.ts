@@ -25,12 +25,22 @@ import {
   mergeProductUpdate,
 } from '../../../utils/merge.js';
 import { generateSlug } from '../../../utils/slug.js';
+import {
+  type ConnectionErrorHandler,
+  resolveErrorHandler,
+} from '../errorHandler.js';
 
 export interface RedisConfig {
   /** ioredis connection URL, e.g. 'redis://localhost:6379'. */
   url: string;
   /** Optional key prefix to namespace all catalog keys. Defaults to 'occ'. */
   keyPrefix?: string;
+  /**
+   * Called with connection errors (dropped connection, refused connect, ...).
+   * Defaults to logging with `console.error`. Without a listener ioredis's
+   * `error` event would terminate the process.
+   */
+  onError?: ConnectionErrorHandler;
 }
 
 type Redis = import('ioredis').Redis;
@@ -107,6 +117,7 @@ function parseEntity<T extends object>(raw: string, dateFields: string[]): T {
  */
 export class RedisAdapter implements DatabaseAdapter {
   private readonly client: Redis;
+  private readonly onError: ConnectionErrorHandler;
 
   readonly products: ProductRepository;
   readonly categories: CategoryRepository;
@@ -115,6 +126,8 @@ export class RedisAdapter implements DatabaseAdapter {
   constructor(config: RedisConfig) {
     const RedisClass = loadDriver();
     this.client = new RedisClass(config.url);
+    this.onError = resolveErrorHandler('Redis', config.onError);
+    this.client.on('error', this.onError);
     const keys = new RedisKeys(config.keyPrefix ?? 'occ');
 
     const images = new RedisImageRepository(this.client, keys);
@@ -133,15 +146,19 @@ export class RedisAdapter implements DatabaseAdapter {
       await this.client.ping();
       return { ok: true, issues: [] };
     } catch (err) {
+      // The driver error can name the server address; keep it out of the
+      // result, which callers may render, and report it to the error handler.
+      this.onError(err instanceof Error ? err : new Error(String(err)));
       return {
         ok: false,
-        issues: [`Redis connection failed: ${String(err)}`],
+        issues: ['Redis connection failed. Check the server log for details.'],
       };
     }
   }
 
   async close(): Promise<void> {
-    await this.client.quit();
+    // QUIT cannot complete without a connection; drop the socket instead.
+    await this.client.quit().catch(() => this.client.disconnect());
   }
 }
 

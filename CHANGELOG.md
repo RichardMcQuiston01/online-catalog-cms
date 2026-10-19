@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - `new OnlineCatalog({ db: new SQLiteAdapter(...) })` no longer throws `Call initialize() first`. `SQLiteAdapter` builds its repositories in the constructor and opens the database on first use; `initialize()` only migrates, and calling it again reuses the open connection instead of leaking a new one.
+- A dropped Redis connection, an idle MySQL connection closed by the server, or a MongoDB client error no longer terminates the host process. The Redis, MySQL and MongoDB adapters now attach an `error` listener and accept an optional `onError` callback (default: `console.error`).
+
+### Security
+- `RedisAdapter.verify()` and `MongoDBAdapter.verify()` return a fixed message instead of the driver error, which can contain the server address. The original error goes to `onError`.
 
 ### Removed
 - The three unused Python wheels that were committed at the repository root (`dnspython`, `pymongo`, `pymongo_inmemory`), and `*.whl` is now ignored. MongoDB tests keep using the `mongo:7` service container in CI.

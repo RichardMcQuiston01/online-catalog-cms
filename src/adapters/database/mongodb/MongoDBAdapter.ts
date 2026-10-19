@@ -25,12 +25,18 @@ import {
   mergeProductUpdate,
 } from '../../../utils/merge.js';
 import { generateSlug } from '../../../utils/slug.js';
+import {
+  type ConnectionErrorHandler,
+  resolveErrorHandler,
+} from '../errorHandler.js';
 
 export interface MongoDBConfig {
   /** MongoDB connection string, e.g. 'mongodb://localhost:27017'. */
   url: string;
   /** Database name. Defaults to 'online_catalog'. */
   database?: string;
+  /** Called with client-level errors. Defaults to logging with `console.error`. */
+  onError?: ConnectionErrorHandler;
 }
 
 type MongoClient = import('mongodb').MongoClient;
@@ -111,6 +117,7 @@ function containsPattern(search: string): { $regex: string; $options: string } {
 export class MongoDBAdapter implements DatabaseAdapter {
   private readonly client: MongoClient;
   private readonly dbName: string;
+  private readonly onError: ConnectionErrorHandler;
 
   readonly products: ProductRepository;
   readonly categories: CategoryRepository;
@@ -119,6 +126,8 @@ export class MongoDBAdapter implements DatabaseAdapter {
   constructor(config: MongoDBConfig) {
     const MongoClient = loadDriver();
     this.client = new MongoClient(config.url);
+    this.onError = resolveErrorHandler('MongoDB', config.onError);
+    this.client.on('error', this.onError);
     this.dbName = config.database ?? 'online_catalog';
 
     const db = () => this.client.db(this.dbName);
@@ -148,9 +157,14 @@ export class MongoDBAdapter implements DatabaseAdapter {
       await this.client.db(this.dbName).command({ ping: 1 });
       return { ok: true, issues: [] };
     } catch (err) {
+      // The driver error can name the server address; keep it out of the
+      // result, which callers may render, and report it to the error handler.
+      this.onError(err instanceof Error ? err : new Error(String(err)));
       return {
         ok: false,
-        issues: [`MongoDB connection failed: ${String(err)}`],
+        issues: [
+          'MongoDB connection failed. Check the server log for details.',
+        ],
       };
     }
   }
