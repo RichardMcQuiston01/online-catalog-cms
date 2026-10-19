@@ -205,7 +205,7 @@ bun run lint        # lint and format check (biome)
 bun run lint:fix    # auto-fix lint/format issues
 ```
 
-Tests live alongside their source files (`*.test.ts`). Every database adapter is meant to pass the shared contract in `src/adapters/database/adapterContract.ts`. It runs for SQLite automatically, and for Redis and MongoDB when `REDIS_URL` / `MONGODB_URL` are set (CI provides both). PostgreSQL and MySQL have no automated tests yet (see [ROADMAP.md](ROADMAP.md)).
+Tests live alongside their source files (`*.test.ts`). Every database adapter is meant to pass the shared contract in `src/adapters/database/adapterContract.ts`. It runs for SQLite automatically, and for the other databases when their connection settings are set: `REDIS_URL`, `MONGODB_URL`, `DATABASE_URL` (PostgreSQL) and `MYSQL_HOST` with `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD` and `MYSQL_DATABASE`. CI starts all four services. The PostgreSQL and MySQL tests drop and recreate the `occ_*` tables, so point them at a scratch database.
 
 ### Releasing
 
