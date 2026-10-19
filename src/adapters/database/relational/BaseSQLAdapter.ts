@@ -6,6 +6,8 @@ import {
 } from './migrations/index.js';
 
 export interface SQLRunner {
+  /** The dialect this connection speaks. */
+  readonly dialect: SQLDialect;
   /** Execute a statement that returns no rows. */
   run(sql: string, params?: unknown[]): Promise<void>;
   /** Execute a query and return all rows. */

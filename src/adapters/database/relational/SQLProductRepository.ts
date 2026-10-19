@@ -17,6 +17,7 @@ import {
   buildWhereClause,
   containsPattern,
   loadImagesByProductId,
+  toDbTimestamp,
 } from './sqlHelpers.js';
 
 export class SQLProductRepository implements ProductRepository {
@@ -24,7 +25,7 @@ export class SQLProductRepository implements ProductRepository {
 
   async create(input: CreateProductInput): Promise<Product> {
     const id = randomUUID();
-    const now = new Date().toISOString();
+    const now = toDbTimestamp(this.db, new Date());
     const slug = input.slug ?? generateSlug(input.name);
 
     await this.db.run(
@@ -78,7 +79,7 @@ export class SQLProductRepository implements ProductRepository {
     if (!existing) throw new Error(`Product not found: ${id}`);
 
     const fields = mergeProductUpdate(existing, input);
-    const now = new Date().toISOString();
+    const now = toDbTimestamp(this.db, new Date());
     await this.db.run(
       `UPDATE occ_product SET
          name        = ?,

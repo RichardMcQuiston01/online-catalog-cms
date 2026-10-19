@@ -38,3 +38,28 @@ describe('migration list', () => {
     }
   });
 });
+
+describe('MySQL schema', () => {
+  const statements = migrationsFor('mysql').flatMap((m) => m.statements);
+
+  it('declares foreign keys as constraints, since MySQL ignores inline REFERENCES', () => {
+    const create = statements.filter((s) => s.startsWith('CREATE TABLE'));
+    expect(create.length).toBe(3);
+    for (const statement of create) {
+      expect(statement).not.toMatch(/NULL\s+REFERENCES/);
+      expect(statement).toMatch(/FOREIGN KEY/);
+    }
+  });
+
+  it('gives no TEXT column a literal default, which MySQL rejects', () => {
+    for (const statement of statements) {
+      expect(statement).not.toMatch(/TEXT\s+NOT NULL\s+DEFAULT/);
+    }
+  });
+
+  it('uses DATETIME(3) for every timestamp', () => {
+    for (const statement of statements.filter((s) => s.startsWith('CREATE'))) {
+      expect(statement).not.toContain('TIMESTAMP');
+    }
+  });
+});
