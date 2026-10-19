@@ -14,6 +14,3 @@ Completed work is tracked in [CHANGELOG.md](CHANGELOG.md). What's left:
       error. Generate a suffix or throw a descriptive error.
 - [ ] Validate `description` with `assertRichTextDocument` in
       `ProductService.create`/`update` rather than leaving it to callers.
-- [ ] Make `SQLiteAdapter` build its repositories in the constructor like
-      the other adapters (it currently throws "Call initialize() first" from
-      the `products`/`categories`/`images` getters).
