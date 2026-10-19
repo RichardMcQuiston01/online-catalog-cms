@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-19
+
 ### Added
 - `maxUploadBytes` option on `OnlineCatalog` (default 10 MiB) and `ImageService`. Larger uploads, including endless streams, are rejected with a `ValidationError` before anything is written. `ValidationError` is exported.
 - `ProductService.create()` and `update()` validate `description` with `assertRichTextDocument` and throw a `ValidationError` (field `description`) that names the offending node. `assertRichTextDocument` errors now say what is wrong and where.
