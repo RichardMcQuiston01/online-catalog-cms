@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `maxUploadBytes` option on `OnlineCatalog` (default 10 MiB) and `ImageService`. Larger uploads, including endless streams, are rejected with a `ValidationError` before anything is written. `ValidationError` is exported.
+- `ProductService.create()` and `update()` validate `description` with `assertRichTextDocument` and throw a `ValidationError` (field `description`) that names the offending node. `assertRichTextDocument` errors now say what is wrong and where.
 
 ### Changed
 - **Breaking for S3 users who relied on the default:** `S3Adapter` now defaults `publicRead` to `false` and sends no `ACL` unless `publicRead: true` (or a per-upload `public: true`) is set. Set `publicRead: true` to keep the old behavior on buckets that still allow ACLs.
 - The `contentType` field of `images.upload()` is ignored; the type is detected from the file.
+- Relative image `src` and link `href` values without a leading `/` (for example `photo.jpg`) are no longer valid in rich text; use an absolute `http(s)` URL or a root-relative path.
 
 ### Fixed
 - `new OnlineCatalog({ db: new SQLiteAdapter(...) })` no longer throws `Call initialize() first`. `SQLiteAdapter` builds its repositories in the constructor and opens the database on first use; `initialize()` only migrates, and calling it again reuses the open connection instead of leaking a new one.
@@ -25,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RedisAdapter.verify()` and `MongoDBAdapter.verify()` return a fixed message instead of the driver error, which can contain the server address. The original error goes to `onError`.
 - Storage `delete()` only removes objects whose key has the shape `generateStorageKey` produces (`{uuid}-{safe-name}`). A URL stored through `images.addUrl()` that points under `baseUrl` can no longer delete an arbitrary S3 object or any other file in the upload directory, and URLs with a query string or fragment are ignored.
 - `images.upload()` accepts only JPEG, PNG, GIF, WebP and AVIF, detected from the file's content instead of its name or declared type, so HTML or SVG can no longer be stored as an "image" under the public base URL. The stored extension and `Content-Type` follow the detected format. SVG is rejected.
+- Rich-text validation rejects `javascript:`, `data:`, `vbscript:` and protocol-relative link/image URLs (only `http(s)` URLs and root-relative paths like `/uploads/a.jpg` pass), restricts `cssClass` to letters, digits, spaces, `-` and `_`, requires heading levels to be integers 1 to 6, and caps link nesting depth (8), node count (10,000) and serialized size (1,000,000 characters). Deeply nested documents no longer throw `RangeError`.
 
 ### Removed
 - The three unused Python wheels that were committed at the repository root (`dnspython`, `pymongo`, `pymongo_inmemory`), and `*.whl` is now ignored. MongoDB tests keep using the `mongo:7` service container in CI.
