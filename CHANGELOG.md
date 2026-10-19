@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- The three unused Python wheels that were committed at the repository root (`dnspython`, `pymongo`, `pymongo_inmemory`), and `*.whl` is now ignored. MongoDB tests keep using the `mongo:7` service container in CI.
+
 ## [0.2.1] - 2026-10-19
 
 ### Added
