@@ -92,10 +92,11 @@ export class ImageService {
     const image = await this.repo.get(id);
     if (!image) return;
 
-    // Best effort: a stale file must not block removing the database record.
-    await this.storage?.delete(image.url).catch(() => {});
-
+    // Record first, then the file: see ProductService.delete.
     await this.repo.delete(id);
+
+    // Best effort: an orphaned file is recoverable, an orphaned row is not.
+    await this.storage?.delete(image.url).catch(() => {});
   }
 
   async listByProduct(productId: string): Promise<Image[]> {

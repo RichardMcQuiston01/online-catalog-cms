@@ -104,7 +104,8 @@ function parseEntity<T extends object>(raw: string, dateFields: string[]): T {
  * sets as secondary indexes. Redis has no foreign keys, so the repositories
  * reproduce the SQL behavior themselves: deleting a product deletes its
  * images, and deleting a category clears it from its products and children.
- * Multi-key writes are not transactional.
+ * Writes that touch several keys (create and delete of a product) run in a
+ * `MULTI`/`EXEC` so they apply together or not at all.
  *
  * Key layout (see {@link RedisKeys}):
  *   {prefix}:product:{id}          — product JSON (without images)
@@ -170,6 +171,19 @@ function matchesProductSearch(product: Product, search: string): boolean {
   );
 }
 
+/**
+ * Runs a `MULTI` block and throws if the transaction or any command in it
+ * failed. ioredis reports per-command errors in the result instead of
+ * rejecting, which would otherwise hide a partially applied write.
+ */
+async function execTransaction(tx: ReturnType<Redis['multi']>): Promise<void> {
+  const results = await tx.exec();
+  if (!results) throw new Error('Redis transaction was discarded.');
+  for (const [error] of results) {
+    if (error) throw error;
+  }
+}
+
 function paginate<T>(items: T[], page: { limit?: number; offset?: number }) {
   const start = page.offset ?? 0;
   const end = page.limit !== undefined ? start + page.limit : undefined;
@@ -227,14 +241,16 @@ class RedisProductRepository implements ProductRepository {
       updatedAt: now,
     };
 
-    await this.save(product);
-    await this.client.sadd(this.keys.allProducts(), product.id);
+    const tx = this.client.multi();
+    tx.set(
+      this.keys.product(product.id),
+      JSON.stringify({ ...product, images: [] }),
+    );
+    tx.sadd(this.keys.allProducts(), product.id);
     if (product.categoryId) {
-      await this.client.sadd(
-        this.keys.productsInCategory(product.categoryId),
-        product.id,
-      );
+      tx.sadd(this.keys.productsInCategory(product.categoryId), product.id);
     }
+    await execTransaction(tx);
     return product;
   }
 
@@ -272,21 +288,22 @@ class RedisProductRepository implements ProductRepository {
     return updated;
   }
 
+  /** Removes the product and its images in one atomic `MULTI`/`EXEC`. */
   async delete(id: string): Promise<void> {
     const existing = await this.get(id);
     if (!existing) return;
 
+    const tx = this.client.multi();
     for (const image of existing.images) {
-      await this.images.delete(image.id);
+      tx.del(this.keys.image(image.id));
     }
-    await this.client.del(this.keys.product(id));
-    await this.client.srem(this.keys.allProducts(), id);
+    tx.del(this.keys.imagesOfProduct(id));
+    tx.del(this.keys.product(id));
+    tx.srem(this.keys.allProducts(), id);
     if (existing.categoryId) {
-      await this.client.srem(
-        this.keys.productsInCategory(existing.categoryId),
-        id,
-      );
+      tx.srem(this.keys.productsInCategory(existing.categoryId), id);
     }
+    await execTransaction(tx);
   }
 
   async list(filter: ProductFilter = {}): Promise<Product[]> {

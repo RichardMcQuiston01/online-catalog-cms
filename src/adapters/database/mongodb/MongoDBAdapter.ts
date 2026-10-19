@@ -262,10 +262,17 @@ class MongoProductRepository implements ProductRepository {
     return updated;
   }
 
-  /** Also deletes the product's images, like the SQL `ON DELETE CASCADE`. */
+  /**
+   * Also deletes the product's images, like the SQL `ON DELETE CASCADE`.
+   * The product goes first: standalone MongoDB has no multi-document
+   * transactions, and if the second step fails the leftover image documents
+   * are unreachable (nothing lists a missing product's images) and a retry
+   * removes them, whereas the reverse order would leave a product that has
+   * lost its images.
+   */
   async delete(id: string): Promise<void> {
-    await this.imgCol().deleteMany({ productId: id });
     await this.col().deleteOne({ _id: id });
+    await this.imgCol().deleteMany({ productId: id });
   }
 
   async list(filter: ProductFilter = {}): Promise<Product[]> {
