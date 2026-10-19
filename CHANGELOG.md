@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A dropped Redis connection, an idle MySQL connection closed by the server, or a MongoDB client error no longer terminates the host process. The Redis, MySQL and MongoDB adapters now attach an `error` listener and accept an optional `onError` callback (default: `console.error`).
 - `S3Adapter` uploads no longer fail with `AccessControlListNotSupported` on buckets created since April 2023, which have ACLs disabled.
 - `LocalStorageAdapter.upload()` removes the partial file when a stream fails midway and refuses to write outside the upload directory.
+- `products.delete()` and `images.delete()` remove the database row before the stored files. A database failure no longer leaves rows pointing at files that are already gone; a leftover file is only wasted space. The Redis adapter deletes a product and its images in one `MULTI`/`EXEC` (and creates a product atomically), and the MongoDB adapter deletes the product before its images.
 
 ### Security
 - `RedisAdapter.verify()` and `MongoDBAdapter.verify()` return a fixed message instead of the driver error, which can contain the server address. The original error goes to `onError`.

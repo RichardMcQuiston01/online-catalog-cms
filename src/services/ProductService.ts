@@ -29,15 +29,19 @@ export class ProductService {
     const product = await this.repo.get(id);
     if (!product) return;
 
-    // Best effort: a stale file must not block removing the database record.
+    // Remove the record first. If that throws, every file is still in place
+    // and the delete can be retried. The reverse order would leave rows
+    // pointing at files that are already gone.
+    await this.repo.delete(id);
+
+    // Best effort: a file left behind is only wasted space, and must not
+    // make a delete that already succeeded look like it failed.
     const { storage } = this;
     if (storage) {
       await Promise.allSettled(
         product.images.map((image) => storage.delete(image.url)),
       );
     }
-
-    await this.repo.delete(id);
   }
 
   async list(filter?: ProductFilter): Promise<Product[]> {
