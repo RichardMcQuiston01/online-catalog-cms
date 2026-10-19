@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ProductService.create()` and `update()` validate `description` with `assertRichTextDocument` and throw a `ValidationError` (field `description`) that names the offending node. `assertRichTextDocument` errors now say what is wrong and where.
 - `getBySlug(slug)` on `products` and `categories` (services and repositories), so a storefront can resolve a URL without listing the table.
 - `ValidationError` and `SlugConflictError`. The services now own the domain rules, so every adapter behaves the same: non-negative integer `price`; `name`/`sku` length (255) and `altText` length (500); `metadata` must be plain JSON, at most 65,536 characters, without `$`-prefixed or dotted keys, and is stored as normalized JSON; image `url`s must be `http(s)` or root-relative. See docs/API.md.
+- `verify()` on the SQL adapters reports when the schema is behind the migrations this version needs, and `initialize()` refuses a database migrated by a newer version of the package.
 
 ### Changed
 - **Breaking for S3 users who relied on the default:** `S3Adapter` now defaults `publicRead` to `false` and sends no `ACL` unless `publicRead: true` (or a per-upload `public: true`) is set. Set `publicRead: true` to keep the old behavior on buckets that still allow ACLs.
@@ -19,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Relative image `src` and link `href` values without a leading `/` (for example `photo.jpg`) are no longer valid in rich text; use an absolute `http(s)` URL or a root-relative path.
 - `list()` returns at most 100 rows by default and rejects a `limit` above 1000. Page with `offset` to read more. Previously an unbounded call returned every row.
 - **Custom adapters:** `ProductRepository` and `CategoryRepository` gain a required `getBySlug(slug)` method. `ProductService` and `ImageService` take an options object with the repositories they use for existence checks (`OnlineCatalog` wires these for you).
+- The SQL adapters now run a versioned migration runner: `initialize()` reads the highest version in `occ_migration`, applies only the pending migrations in order, and records each version in the same transaction as its schema change (MySQL commits DDL implicitly, so keep its statements re-runnable). Existing databases already hold version 1 and are adopted as they are.
+- Migrations are lists of statements run as written instead of one script split on `;`, so semicolons in string literals or comments are safe, and MySQL no longer rewrites the PostgreSQL script (`ON CONFLICT` to `INSERT IGNORE`). `SQLRunner` gained `transaction()`.
 
 ### Fixed
 - `new OnlineCatalog({ db: new SQLiteAdapter(...) })` no longer throws `Call initialize() first`. `SQLiteAdapter` builds its repositories in the constructor and opens the database on first use; `initialize()` only migrates, and calling it again reuses the open connection instead of leaking a new one.

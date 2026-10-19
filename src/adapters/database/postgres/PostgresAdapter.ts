@@ -12,7 +12,7 @@ import {
 import { SQLCategoryRepository } from '../relational/SQLCategoryRepository.js';
 import { SQLImageRepository } from '../relational/SQLImageRepository.js';
 import { SQLProductRepository } from '../relational/SQLProductRepository.js';
-import { INITIAL_MIGRATION_SQL } from '../relational/migrations/001_initial.js';
+import type { SQLDialect } from '../relational/migrations/index.js';
 
 export interface PostgresConfig {
   /** postgres.js connection string, e.g. 'postgres://user:pass@host/db'. */
@@ -21,7 +21,7 @@ export interface PostgresConfig {
 
 type Sql = import('postgres').Sql;
 
-function loadDriver(): (url: string) => Sql {
+function loadDriver(): (url: string, options: object) => Sql {
   try {
     const require = createRequire(import.meta.url);
     // postgres.js exports the connection factory as default
@@ -44,6 +44,13 @@ export function toNumberedPlaceholders(query: string): string {
 
 class PostgresSQLRunner implements SQLRunner {
   constructor(private readonly sql: Sql) {}
+
+  async transaction<T>(work: (tx: SQLRunner) => Promise<T>): Promise<T> {
+    // postgres.js commits when the callback resolves and rolls back when it throws.
+    return (await this.sql.begin((tx) =>
+      work(new PostgresSQLRunner(tx as unknown as Sql)),
+    )) as T;
+  }
 
   async run(query: string, params: unknown[] = []): Promise<void> {
     await this.execute(query, params);
@@ -74,7 +81,8 @@ export class PostgresAdapter extends BaseSQLAdapter implements DatabaseAdapter {
   constructor(config: PostgresConfig) {
     super();
     const connect = loadDriver();
-    this.sql = connect(config.url);
+    // `CREATE TABLE IF NOT EXISTS` raises a NOTICE on every start; drop them.
+    this.sql = connect(config.url, { onnotice: () => {} });
     const runner = new PostgresSQLRunner(this.sql);
     this.db = runner;
     this.products = new SQLProductRepository(runner);
@@ -82,8 +90,8 @@ export class PostgresAdapter extends BaseSQLAdapter implements DatabaseAdapter {
     this.images = new SQLImageRepository(runner);
   }
 
-  protected get migrationSql(): string {
-    return INITIAL_MIGRATION_SQL;
+  protected get dialect(): SQLDialect {
+    return 'postgres';
   }
 
   protected tableExistsQuery(table: string): string {
