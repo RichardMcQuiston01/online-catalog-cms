@@ -10,6 +10,8 @@ export interface OnlineCatalogConfig {
   db: DatabaseAdapter;
   /** Storage adapter for image/file uploads. Optional. */
   storage?: StorageAdapter;
+  /** Largest accepted image upload in bytes. Defaults to 10 MiB. */
+  maxUploadBytes?: number;
 }
 
 /**
@@ -34,7 +36,9 @@ export class OnlineCatalog {
     this.db = config.db;
     this.products = new ProductService(config.db.products, config.storage);
     this.categories = new CategoryService(config.db.categories);
-    this.images = new ImageService(config.db.images, config.storage);
+    this.images = new ImageService(config.db.images, config.storage, {
+      maxUploadBytes: config.maxUploadBytes,
+    });
     this.installer = new Installer(config.db);
   }
 

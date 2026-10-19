@@ -20,7 +20,11 @@ export type { OnlineCatalogConfig } from './catalog.js';
 export { ProductService } from './services/ProductService.js';
 export { CategoryService } from './services/CategoryService.js';
 export { ImageService } from './services/ImageService.js';
-export type { UploadImageInput } from './services/ImageService.js';
+export type {
+  ImageServiceOptions,
+  UploadImageInput,
+} from './services/ImageService.js';
+export { ValidationError } from './errors.js';
 
 export { Installer } from './installer/Installer.js';
 export type { InstallOptions } from './installer/Installer.js';
