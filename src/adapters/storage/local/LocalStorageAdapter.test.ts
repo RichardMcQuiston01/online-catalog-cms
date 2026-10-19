@@ -76,6 +76,18 @@ describe('LocalStorageAdapter', () => {
     expect(existsSync(outsidePath)).toBe(true);
   });
 
+  it('does not delete files that this adapter did not write', async () => {
+    const uploadDir = join(TEST_DIR, 'shared');
+    mkdirSync(uploadDir, { recursive: true });
+    const foreignPath = join(uploadDir, 'config.json');
+    writeFileSync(foreignPath, '{}');
+    const adapter = new LocalStorageAdapter({ uploadDir });
+
+    await adapter.delete('/uploads/config.json');
+
+    expect(existsSync(foreignPath)).toBe(true);
+  });
+
   it('generates distinct keys for the same filename', async () => {
     const adapter = new LocalStorageAdapter({ uploadDir: TEST_DIR });
     const first = await adapter.upload(Buffer.from('1'), 'same.txt');
