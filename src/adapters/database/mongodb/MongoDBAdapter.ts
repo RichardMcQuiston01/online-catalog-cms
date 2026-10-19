@@ -21,6 +21,10 @@ import type {
   UpdateProductInput,
 } from '../../../types/product.js';
 import {
+  resolveCategoryFilter,
+  resolveProductFilter,
+} from '../../../utils/listFilter.js';
+import {
   mergeCategoryUpdate,
   mergeProductUpdate,
 } from '../../../utils/merge.js';
@@ -275,7 +279,12 @@ class MongoProductRepository implements ProductRepository {
     await this.imgCol().deleteMany({ productId: id });
   }
 
-  async list(filter: ProductFilter = {}): Promise<Product[]> {
+  async list(input: ProductFilter = {}): Promise<Product[]> {
+    // Values are checked to be plain strings and numbers, so none of them
+    // can smuggle in a query operator such as `{ $ne: null }`.
+    const filter = resolveProductFilter(input);
+    if (filter.limit === 0) return [];
+
     // biome-ignore lint/suspicious/noExplicitAny: mongo filter type
     const query: any = {};
     if (filter.categoryId !== undefined) query.categoryId = filter.categoryId;
@@ -289,9 +298,11 @@ class MongoProductRepository implements ProductRepository {
       query.$or = [{ name: pattern }, { sku: pattern }];
     }
 
-    let cursor = this.col().find(query).sort({ createdAt: -1 });
-    if (filter.offset) cursor = cursor.skip(filter.offset);
-    if (filter.limit) cursor = cursor.limit(filter.limit);
+    const cursor = this.col()
+      .find(query)
+      .sort({ createdAt: -1 })
+      .skip(filter.offset)
+      .limit(filter.limit);
 
     return this.toProducts(await cursor.toArray());
   }
@@ -369,7 +380,10 @@ class MongoCategoryRepository implements CategoryRepository {
     await this.col().deleteOne({ _id: id });
   }
 
-  async list(filter: CategoryFilter = {}): Promise<Category[]> {
+  async list(input: CategoryFilter = {}): Promise<Category[]> {
+    const filter = resolveCategoryFilter(input);
+    if (filter.limit === 0) return [];
+
     // biome-ignore lint/suspicious/noExplicitAny: mongo filter type
     const query: any = {};
     if (filter.parentId !== undefined) query.parentId = filter.parentId;
@@ -377,9 +391,11 @@ class MongoCategoryRepository implements CategoryRepository {
       query.name = containsPattern(filter.search);
     }
 
-    let cursor = this.col().find(query).sort({ name: 1 });
-    if (filter.offset) cursor = cursor.skip(filter.offset);
-    if (filter.limit) cursor = cursor.limit(filter.limit);
+    const cursor = this.col()
+      .find(query)
+      .sort({ name: 1 })
+      .skip(filter.offset)
+      .limit(filter.limit);
 
     const docs = await cursor.toArray();
     return docs.map((doc) => this.toCategory(doc));

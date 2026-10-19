@@ -269,11 +269,19 @@ describe('SQLiteAdapter', () => {
 
     it('rejects non-integer or negative limit/offset', async () => {
       await expect(adapter.products.list({ limit: -1 })).rejects.toThrow(
-        'limit must be a non-negative integer',
+        'Invalid limit filter: expected an integer from 0 to 1000, received -1.',
       );
       await expect(adapter.categories.list({ offset: 1.5 })).rejects.toThrow(
-        'offset must be a non-negative integer',
+        'Invalid offset filter: expected a non-negative integer, received 1.5.',
       );
+    });
+
+    it('caps an unbounded list at the default page size', async () => {
+      for (let i = 0; i < 101; i++) {
+        await adapter.categories.create({ name: `Category ${i}` });
+      }
+      expect(await adapter.categories.list()).toHaveLength(100);
+      expect(await adapter.categories.list({ offset: 100 })).toHaveLength(1);
     });
 
     it('attaches each product its own images in sort order', async () => {

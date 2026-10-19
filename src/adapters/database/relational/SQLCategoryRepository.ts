@@ -6,11 +6,17 @@ import type {
   CreateCategoryInput,
   UpdateCategoryInput,
 } from '../../../types/category.js';
+import { resolveCategoryFilter } from '../../../utils/listFilter.js';
 import { mergeCategoryUpdate } from '../../../utils/merge.js';
 import { generateSlug } from '../../../utils/slug.js';
 import type { SQLRunner } from './BaseSQLAdapter.js';
 import { type CategoryRow, categoryFromRow } from './rowMappers.js';
-import { buildPaginationClause, buildWhereClause } from './sqlHelpers.js';
+import {
+  buildContainsCondition,
+  buildPaginationClause,
+  buildWhereClause,
+  containsPattern,
+} from './sqlHelpers.js';
 
 export class SQLCategoryRepository implements CategoryRepository {
   constructor(private readonly db: SQLRunner) {}
@@ -82,7 +88,10 @@ export class SQLCategoryRepository implements CategoryRepository {
     await this.db.run('DELETE FROM occ_category WHERE id = ?', [id]);
   }
 
-  async list(filter: CategoryFilter = {}): Promise<Category[]> {
+  async list(input: CategoryFilter = {}): Promise<Category[]> {
+    const filter = resolveCategoryFilter(input);
+    if (filter.limit === 0) return [];
+
     const conditions: string[] = [];
     const params: unknown[] = [];
 
@@ -95,8 +104,8 @@ export class SQLCategoryRepository implements CategoryRepository {
       }
     }
     if (filter.search) {
-      conditions.push('name LIKE ?');
-      params.push(`%${filter.search}%`);
+      conditions.push(buildContainsCondition('name'));
+      params.push(containsPattern(filter.search));
     }
 
     const rows = await this.db.all<CategoryRow>(

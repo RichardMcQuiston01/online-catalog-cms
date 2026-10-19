@@ -21,6 +21,10 @@ import type {
   UpdateProductInput,
 } from '../../../types/product.js';
 import {
+  resolveCategoryFilter,
+  resolveProductFilter,
+} from '../../../utils/listFilter.js';
+import {
   mergeCategoryUpdate,
   mergeProductUpdate,
 } from '../../../utils/merge.js';
@@ -184,10 +188,9 @@ async function execTransaction(tx: ReturnType<Redis['multi']>): Promise<void> {
   }
 }
 
-function paginate<T>(items: T[], page: { limit?: number; offset?: number }) {
-  const start = page.offset ?? 0;
-  const end = page.limit !== undefined ? start + page.limit : undefined;
-  return items.slice(start, end);
+/** Applies an already validated page (see `resolveProductFilter`). */
+function paginate<T>(items: T[], page: { limit: number; offset: number }) {
+  return items.slice(page.offset, page.offset + page.limit);
 }
 
 class RedisProductRepository implements ProductRepository {
@@ -306,7 +309,10 @@ class RedisProductRepository implements ProductRepository {
     await execTransaction(tx);
   }
 
-  async list(filter: ProductFilter = {}): Promise<Product[]> {
+  async list(input: ProductFilter = {}): Promise<Product[]> {
+    const filter = resolveProductFilter(input);
+    if (filter.limit === 0) return [];
+
     const ids = await this.candidateIds(filter.categoryId);
 
     const products = (await this.loadMany(ids)).filter(
@@ -418,7 +424,10 @@ class RedisCategoryRepository implements CategoryRepository {
     await this.client.srem(this.keys.allCategories(), id);
   }
 
-  async list(filter: CategoryFilter = {}): Promise<Category[]> {
+  async list(input: CategoryFilter = {}): Promise<Category[]> {
+    const filter = resolveCategoryFilter(input);
+    if (filter.limit === 0) return [];
+
     const needle = filter.search?.toLowerCase();
     const categories = (await this.loadAll()).filter(
       (category) =>
