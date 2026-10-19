@@ -7,3 +7,6 @@ node_modules/
 
 dist/
 coverage/
+# Python wheels are not part of this project
+*.whl
+dump.rdb

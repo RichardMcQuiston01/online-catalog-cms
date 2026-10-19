@@ -6,14 +6,18 @@ import type {
   ProductFilter,
   UpdateProductInput,
 } from '../../../types/product.js';
+import { resolveProductFilter } from '../../../utils/listFilter.js';
 import { mergeProductUpdate } from '../../../utils/merge.js';
 import { generateSlug } from '../../../utils/slug.js';
 import type { SQLRunner } from './BaseSQLAdapter.js';
 import { type ProductRow, productFromRow } from './rowMappers.js';
 import {
+  buildContainsCondition,
   buildPaginationClause,
   buildWhereClause,
+  containsPattern,
   loadImagesByProductId,
+  toDbTimestamp,
 } from './sqlHelpers.js';
 
 export class SQLProductRepository implements ProductRepository {
@@ -21,7 +25,7 @@ export class SQLProductRepository implements ProductRepository {
 
   async create(input: CreateProductInput): Promise<Product> {
     const id = randomUUID();
-    const now = new Date().toISOString();
+    const now = toDbTimestamp(this.db, new Date());
     const slug = input.slug ?? generateSlug(input.name);
 
     await this.db.run(
@@ -49,14 +53,25 @@ export class SQLProductRepository implements ProductRepository {
   }
 
   async get(id: string): Promise<Product | null> {
+    return this.findOne('id', id);
+  }
+
+  async getBySlug(slug: string): Promise<Product | null> {
+    return this.findOne('slug', slug);
+  }
+
+  private async findOne(
+    column: 'id' | 'slug',
+    value: string,
+  ): Promise<Product | null> {
     const row = await this.db.get<ProductRow>(
-      'SELECT * FROM occ_product WHERE id = ?',
-      [id],
+      `SELECT * FROM occ_product WHERE ${column} = ?`,
+      [value],
     );
     if (!row) return null;
 
-    const imagesByProductId = await loadImagesByProductId(this.db, [id]);
-    return productFromRow(row, imagesByProductId.get(id) ?? []);
+    const imagesByProductId = await loadImagesByProductId(this.db, [row.id]);
+    return productFromRow(row, imagesByProductId.get(row.id) ?? []);
   }
 
   async update(id: string, input: UpdateProductInput): Promise<Product> {
@@ -64,7 +79,7 @@ export class SQLProductRepository implements ProductRepository {
     if (!existing) throw new Error(`Product not found: ${id}`);
 
     const fields = mergeProductUpdate(existing, input);
-    const now = new Date().toISOString();
+    const now = toDbTimestamp(this.db, new Date());
     await this.db.run(
       `UPDATE occ_product SET
          name        = ?,
@@ -99,7 +114,10 @@ export class SQLProductRepository implements ProductRepository {
     await this.db.run('DELETE FROM occ_product WHERE id = ?', [id]);
   }
 
-  async list(filter: ProductFilter = {}): Promise<Product[]> {
+  async list(input: ProductFilter = {}): Promise<Product[]> {
+    const filter = resolveProductFilter(input);
+    if (filter.limit === 0) return [];
+
     const conditions: string[] = [];
     const params: unknown[] = [];
 
@@ -110,8 +128,13 @@ export class SQLProductRepository implements ProductRepository {
       params.push(filter.categoryId);
     }
     if (filter.search) {
-      conditions.push('(name LIKE ? OR sku LIKE ?)');
-      params.push(`%${filter.search}%`, `%${filter.search}%`);
+      conditions.push(
+        `(${buildContainsCondition('name')} OR ${buildContainsCondition('sku')})`,
+      );
+      params.push(
+        containsPattern(filter.search),
+        containsPattern(filter.search),
+      );
     }
     if (filter.minPrice !== undefined) {
       conditions.push('price >= ?');

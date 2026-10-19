@@ -37,11 +37,24 @@ export class LocalStorageAdapter implements StorageAdapter {
   ): Promise<string> {
     const key = generateStorageKey(filename);
     const filePath = resolve(this.uploadDir, key);
+    // generateStorageKey already strips path separators; check anyway so a
+    // future change there cannot write outside the upload directory.
+    if (!filePath.startsWith(this.uploadDir + sep)) {
+      throw new Error(
+        `Refusing to write outside the upload directory: ${filePath}`,
+      );
+    }
 
-    if (Buffer.isBuffer(file)) {
-      await writeFile(filePath, file);
-    } else {
-      await pipeline(file, createWriteStream(filePath));
+    try {
+      if (Buffer.isBuffer(file)) {
+        await writeFile(filePath, file);
+      } else {
+        await pipeline(file, createWriteStream(filePath));
+      }
+    } catch (error) {
+      // Don't leave a truncated file behind when the write fails midway.
+      await rm(filePath, { force: true });
+      throw error;
     }
 
     return this.getPublicUrl(key);

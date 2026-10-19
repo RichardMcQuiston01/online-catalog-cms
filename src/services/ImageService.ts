@@ -1,26 +1,60 @@
 import type { Readable } from 'node:stream';
-import type { ImageRepository, StorageAdapter } from '../interfaces/index.js';
+import { ValidationError } from '../errors.js';
+import type {
+  ImageRepository,
+  ProductRepository,
+  StorageAdapter,
+} from '../interfaces/index.js';
 import type { CreateImageInput, Image } from '../types/index.js';
+import { sniffImageType } from '../utils/imageType.js';
+import { isSafeUrl } from '../utils/url.js';
+import { MAX_ALT_TEXT_LENGTH, assertSortOrder, assertText } from './rules.js';
+
+/** Default cap on a single uploaded image: 10 MiB. */
+export const DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 export interface UploadImageInput {
   productId: string;
   file: Buffer | Readable;
   filename: string;
   altText: string;
+  /** Ignored: the type is detected from the file's content. */
   contentType?: string;
   sortOrder?: number;
 }
 
+export interface ImageServiceOptions {
+  /** Largest accepted upload in bytes. Defaults to 10 MiB. */
+  maxUploadBytes?: number;
+  /** When set, `productId` must refer to an existing product. */
+  products?: ProductRepository;
+}
+
+/** Longest accepted image URL. */
+const MAX_URL_LENGTH = 2048;
+
 /** Handles image uploads and associates them with products. */
 export class ImageService {
+  private readonly maxUploadBytes: number;
+  private readonly products?: ProductRepository;
+
   constructor(
     private readonly repo: ImageRepository,
     private readonly storage?: StorageAdapter,
-  ) {}
+    options: ImageServiceOptions = {},
+  ) {
+    this.maxUploadBytes = options.maxUploadBytes ?? DEFAULT_MAX_UPLOAD_BYTES;
+    this.products = options.products;
+  }
 
   /**
    * Upload a file via the storage adapter and create an image record.
    * Requires a storage adapter to be configured.
+   *
+   * Only JPEG, PNG, GIF, WebP and AVIF are accepted, judged by the file's
+   * content rather than its name or declared type, and the stored name and
+   * content type follow the detected format. Files over `maxUploadBytes` are
+   * rejected before anything is written.
    */
   async upload(input: UploadImageInput): Promise<Image> {
     if (!this.storage) {
@@ -29,16 +63,33 @@ export class ImageService {
       );
     }
 
-    const url = await this.storage.upload(input.file, input.filename, {
-      contentType: input.contentType,
+    const altText = assertText('altText', input.altText, MAX_ALT_TEXT_LENGTH, {
+      allowEmpty: true,
     });
+    const sortOrder = this.readSortOrder(input.sortOrder);
+    await this.assertProductExists(input.productId);
+
+    const bytes = await readWithinLimit(input.file, this.maxUploadBytes);
+    const imageType = sniffImageType(bytes);
+    if (!imageType) {
+      throw new ValidationError(
+        `Unsupported image file "${input.filename}": expected JPEG, PNG, GIF, WebP or AVIF content.`,
+        'file',
+      );
+    }
+
+    const url = await this.storage.upload(
+      Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+      withExtension(input.filename, imageType.extension),
+      { contentType: imageType.mimeType },
+    );
 
     try {
       return await this.repo.create({
         productId: input.productId,
         url,
-        altText: input.altText,
-        sortOrder: input.sortOrder,
+        altText,
+        sortOrder,
       });
     } catch (error) {
       // Don't leave an orphaned file behind when the record can't be saved.
@@ -49,7 +100,23 @@ export class ImageService {
 
   /** Associate an already-hosted image URL with a product. */
   async addUrl(input: CreateImageInput): Promise<Image> {
-    return this.repo.create(input);
+    if (
+      typeof input.url !== 'string' ||
+      input.url.length > MAX_URL_LENGTH ||
+      !isSafeUrl(input.url)
+    ) {
+      throw new ValidationError(
+        `url must be an http(s) URL or a root-relative path such as "/uploads/photo.jpg", at most ${MAX_URL_LENGTH} characters.`,
+        'url',
+      );
+    }
+    const altText = assertText('altText', input.altText, MAX_ALT_TEXT_LENGTH, {
+      allowEmpty: true,
+    });
+    const sortOrder = this.readSortOrder(input.sortOrder);
+    await this.assertProductExists(input.productId);
+
+    return this.repo.create({ ...input, altText, sortOrder });
   }
 
   async get(id: string): Promise<Image | null> {
@@ -60,13 +127,80 @@ export class ImageService {
     const image = await this.repo.get(id);
     if (!image) return;
 
-    // Best effort: a stale file must not block removing the database record.
-    await this.storage?.delete(image.url).catch(() => {});
-
+    // Record first, then the file: see ProductService.delete.
     await this.repo.delete(id);
+
+    // Best effort: an orphaned file is recoverable, an orphaned row is not.
+    await this.storage?.delete(image.url).catch(() => {});
   }
 
   async listByProduct(productId: string): Promise<Image[]> {
     return this.repo.listByProduct(productId);
   }
+
+  private readSortOrder(sortOrder: unknown): number | undefined {
+    return sortOrder === undefined ? undefined : assertSortOrder(sortOrder);
+  }
+
+  private async assertProductExists(productId: string): Promise<void> {
+    if (typeof productId !== 'string') {
+      throw new ValidationError(
+        `productId must be a string, received ${typeof productId}.`,
+        'productId',
+      );
+    }
+    if (this.products && !(await this.products.get(productId))) {
+      throw new ValidationError(
+        `Product not found: ${productId}. Create the product before adding images to it.`,
+        'productId',
+      );
+    }
+  }
+}
+
+/** Replaces the filename's extension so it always matches the real format. */
+function withExtension(filename: string, extension: string): string {
+  const baseName = filename.replace(/\.[^./\\]*$/, '');
+  return `${baseName || 'image'}${extension}`;
+}
+
+/**
+ * Collects an upload into memory, stopping as soon as it exceeds `maxBytes`.
+ * Reading a stream by async iteration keeps this free of Node built-ins.
+ */
+async function readWithinLimit(
+  file: Buffer | Readable,
+  maxBytes: number,
+): Promise<Uint8Array> {
+  const tooLarge = (): ValidationError =>
+    new ValidationError(
+      `Upload is larger than the ${maxBytes} byte limit. Resize the image or raise maxUploadBytes.`,
+      'file',
+    );
+
+  if (file instanceof Uint8Array) {
+    if (file.byteLength > maxBytes) throw tooLarge();
+    return file;
+  }
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for await (const chunk of file as AsyncIterable<Uint8Array | string>) {
+    const bytes =
+      typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk;
+    total += bytes.byteLength;
+    if (total > maxBytes) {
+      file.destroy();
+      throw tooLarge();
+    }
+    chunks.push(bytes);
+  }
+
+  const joined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return joined;
 }

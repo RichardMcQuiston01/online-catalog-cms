@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `maxUploadBytes` option on `OnlineCatalog` (default 10 MiB) and `ImageService`. Larger uploads, including endless streams, are rejected with a `ValidationError` before anything is written. `ValidationError` is exported.
+- `ProductService.create()` and `update()` validate `description` with `assertRichTextDocument` and throw a `ValidationError` (field `description`) that names the offending node. `assertRichTextDocument` errors now say what is wrong and where.
+- `getBySlug(slug)` on `products` and `categories` (services and repositories), so a storefront can resolve a URL without listing the table.
+- `ValidationError` and `SlugConflictError`. The services now own the domain rules, so every adapter behaves the same: non-negative integer `price`; `name`/`sku` length (255) and `altText` length (500); `metadata` must be plain JSON, at most 65,536 characters, without `$`-prefixed or dotted keys, and is stored as normalized JSON; image `url`s must be `http(s)` or root-relative. See docs/API.md.
+- `verify()` on the SQL adapters reports when the schema is behind the migrations this version needs, and `initialize()` refuses a database migrated by a newer version of the package.
+- Migration 2 adds indexes on `occ_product(category_id)`, `occ_category(parent_id)` and `occ_image(product_id, sort_order)` (MySQL already indexes the foreign keys), so category filters, the category tree and `images.listByProduct` no longer scan whole tables. It applies the next time `initialize()` runs.
+- PostgreSQL adapter contract and upgrade tests (run when `DATABASE_URL` is set), including a test that timestamps round-trip in any time zone.
+- CI runs the shared adapter contract against PostgreSQL 16 and MySQL 8 service containers, next to SQLite, Redis and MongoDB. Set `DATABASE_URL` (PostgreSQL) or `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE` to run them locally.
+
+### Changed
+- **Breaking for S3 users who relied on the default:** `S3Adapter` now defaults `publicRead` to `false` and sends no `ACL` unless `publicRead: true` (or a per-upload `public: true`) is set. Set `publicRead: true` to keep the old behavior on buckets that still allow ACLs.
+- The `contentType` field of `images.upload()` is ignored; the type is detected from the file.
+- Relative image `src` and link `href` values without a leading `/` (for example `photo.jpg`) are no longer valid in rich text; use an absolute `http(s)` URL or a root-relative path.
+- `list()` returns at most 100 rows by default and rejects a `limit` above 1000. Page with `offset` to read more. Previously an unbounded call returned every row.
+- **Custom adapters:** `ProductRepository` and `CategoryRepository` gain a required `getBySlug(slug)` method. `ProductService` and `ImageService` take an options object with the repositories they use for existence checks (`OnlineCatalog` wires these for you).
+- The SQL adapters now run a versioned migration runner: `initialize()` reads the highest version in `occ_migration`, applies only the pending migrations in order, and records each version in the same transaction as its schema change (MySQL commits DDL implicitly, so keep its statements re-runnable). Existing databases already hold version 1 and are adopted as they are.
+- Migrations are lists of statements run as written instead of one script split on `;`, so semicolons in string literals or comments are safe, and MySQL no longer rewrites the PostgreSQL script (`ON CONFLICT` to `INSERT IGNORE`). `SQLRunner` gained `transaction()`.
+
+### Fixed
+- `new OnlineCatalog({ db: new SQLiteAdapter(...) })` no longer throws `Call initialize() first`. `SQLiteAdapter` builds its repositories in the constructor and opens the database on first use; `initialize()` only migrates, and calling it again reuses the open connection instead of leaking a new one.
+- A dropped Redis connection, an idle MySQL connection closed by the server, or a MongoDB client error no longer terminates the host process. The Redis, MySQL and MongoDB adapters now attach an `error` listener and accept an optional `onError` callback (default: `console.error`).
+- `S3Adapter` uploads no longer fail with `AccessControlListNotSupported` on buckets created since April 2023, which have ACLs disabled.
+- `LocalStorageAdapter.upload()` removes the partial file when a stream fails midway and refuses to write outside the upload directory.
+- `products.delete()` and `images.delete()` remove the database row before the stored files. A database failure no longer leaves rows pointing at files that are already gone; a leftover file is only wasted space. The Redis adapter deletes a product and its images in one `MULTI`/`EXEC` (and creates a product atomically), and the MongoDB adapter deletes the product before its images.
+- `list()` on every adapter validates its filter the same way: `limit` and `offset` must be integers (`limit: 0` returns an empty page instead of everything on MongoDB; negative values no longer throw on SQL but read from the end on Redis), `minPrice`/`maxPrice` must be finite numbers, and `categoryId`/`parentId` must be a string or `null`. Failures throw a `ValidationError` naming the field.
+- Searching with `%` or `_` matches those characters literally on the SQL adapters instead of acting as wildcards, and PostgreSQL search is now case-insensitive like the other adapters.
+- Slugs: `Café Latte` becomes `cafe-latte` instead of `caf-latte`, non-Latin names keep their letters instead of becoming an empty slug, slugs are capped at 255 characters, an empty slug is rejected with a clear error, and a duplicate name gets `-2`, `-3`, ... instead of a raw driver error. Redis now enforces slug uniqueness (`SET NX` index, backfilled on `initialize()`).
+- Category trees can no longer cycle: a category cannot be its own parent or the parent of one of its ancestors, and `parentId`, a product's `categoryId` and an image's `productId` must exist on every adapter, as the SQL foreign keys already required.
+- PostgreSQL timestamps no longer shift by the host's UTC offset: columns are `timestamptz` and `Date` values are bound as instants. Migration 2 converts existing columns, treating the stored values as UTC.
+- MySQL: inserts no longer fail in strict mode on the trailing `Z` of an ISO timestamp, and milliseconds are kept (`DATETIME(3)`, pool in UTC). The MySQL schema now declares real foreign keys (MySQL ignores inline `REFERENCES`) and no longer gives `TEXT` columns a literal default (rejected by MySQL), so `ON DELETE CASCADE`/`SET NULL` work and the migration runs at all.
+
+### Security
+- `RedisAdapter.verify()` and `MongoDBAdapter.verify()` return a fixed message instead of the driver error, which can contain the server address. The original error goes to `onError`.
+- Storage `delete()` only removes objects whose key has the shape `generateStorageKey` produces (`{uuid}-{safe-name}`). A URL stored through `images.addUrl()` that points under `baseUrl` can no longer delete an arbitrary S3 object or any other file in the upload directory, and URLs with a query string or fragment are ignored.
+- `images.upload()` accepts only JPEG, PNG, GIF, WebP and AVIF, detected from the file's content instead of its name or declared type, so HTML or SVG can no longer be stored as an "image" under the public base URL. The stored extension and `Content-Type` follow the detected format. SVG is rejected.
+- Rich-text validation rejects `javascript:`, `data:`, `vbscript:` and protocol-relative link/image URLs (only `http(s)` URLs and root-relative paths like `/uploads/a.jpg` pass), restricts `cssClass` to letters, digits, spaces, `-` and `_`, requires heading levels to be integers 1 to 6, and caps link nesting depth (8), node count (10,000) and serialized size (1,000,000 characters). Deeply nested documents no longer throw `RangeError`.
+- MongoDB `list()` no longer passes filter objects into the query, so `{ categoryId: { $ne: null } }` or a `$regex` object from a nested query string is rejected instead of changing the query.
+
+### Removed
+- The three unused Python wheels that were committed at the repository root (`dnspython`, `pymongo`, `pymongo_inmemory`), and `*.whl` is now ignored. MongoDB tests keep using the `mongo:7` service container in CI.
+
 ## [0.2.1] - 2026-10-19
 
 ### Added

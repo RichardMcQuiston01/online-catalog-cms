@@ -2,18 +2,18 @@ import type { Image } from '../../../types/image.js';
 import type { SQLRunner } from './BaseSQLAdapter.js';
 import { type ImageRow, imageFromRow } from './rowMappers.js';
 
-/** Largest signed 64-bit integer; accepted as "no limit" by every dialect. */
-const UNBOUNDED_LIMIT = '9223372036854775807';
-
 /** Rows per `IN (...)` query, kept under each driver's bind-parameter cap. */
 const IN_CLAUSE_CHUNK_SIZE = 500;
 
-function assertNonNegativeInteger(name: string, value: number): void {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new RangeError(
-      `${name} must be a non-negative integer, received: ${value}`,
-    );
-  }
+/**
+ * The value to bind for a timestamp column. PostgreSQL (`timestamptz`) and
+ * MySQL (`DATETIME(3)`, pool in UTC) take a `Date` and store the instant;
+ * binding an ISO string instead is rejected by strict MySQL and read back
+ * shifted by the host's offset on PostgreSQL. SQLite has no date type and
+ * stores the ISO string, which round-trips exactly.
+ */
+export function toDbTimestamp(db: SQLRunner, date: Date): string | Date {
+  return db.dialect === 'sqlite' ? date.toISOString() : date;
 }
 
 /** Joins conditions into a `WHERE` clause, or '' when there are none. */
@@ -22,20 +22,36 @@ export function buildWhereClause(conditions: string[]): string {
 }
 
 /**
- * Builds `LIMIT`/`OFFSET`. The values are validated and inlined rather than
- * bound: MySQL prepared statements reject bound `LIMIT` parameters. SQLite,
- * MySQL and PostgreSQL all require a `LIMIT` before `OFFSET`, hence the
- * unbounded fallback.
+ * Builds `LIMIT`/`OFFSET` from an already validated page. The numbers are
+ * inlined rather than bound because MySQL prepared statements reject bound
+ * `LIMIT` parameters; `resolveProductFilter` and `resolveCategoryFilter`
+ * guarantee they are integers.
  */
 export function buildPaginationClause(page: {
-  limit?: number;
-  offset?: number;
+  limit: number;
+  offset: number;
 }): string {
-  const { limit, offset } = page;
-  if (limit !== undefined) assertNonNegativeInteger('limit', limit);
-  if (offset !== undefined) assertNonNegativeInteger('offset', offset);
-  if (limit === undefined && offset === undefined) return '';
-  return `LIMIT ${limit ?? UNBOUNDED_LIMIT} OFFSET ${offset ?? 0}`;
+  return `LIMIT ${page.limit} OFFSET ${page.offset}`;
+}
+
+/** Escape character for {@link containsPattern}; `\` means different things per dialect. */
+const LIKE_ESCAPE = '!';
+
+/**
+ * SQL for a case-insensitive "contains" match on `column`, with `%` and `_`
+ * in the search text treated literally. Lowercasing both sides makes
+ * PostgreSQL, whose `LIKE` is case-sensitive, behave like SQLite and MySQL.
+ */
+export function buildContainsCondition(column: string): string {
+  return `LOWER(${column}) LIKE ? ESCAPE '${LIKE_ESCAPE}'`;
+}
+
+/** The bound value for {@link buildContainsCondition}. */
+export function containsPattern(search: string): string {
+  const escaped = search
+    .toLowerCase()
+    .replace(/[!%_]/g, (char) => `${LIKE_ESCAPE}${char}`);
+  return `%${escaped}%`;
 }
 
 /** Loads images for many products in one query per chunk (avoids N+1). */

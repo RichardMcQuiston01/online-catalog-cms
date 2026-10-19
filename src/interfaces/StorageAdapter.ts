@@ -4,7 +4,10 @@ import type { Readable } from 'node:stream';
 export interface UploadOptions {
   /** MIME type of the file, e.g. "image/jpeg". */
   contentType?: string;
-  /** Whether the file should be publicly readable. Defaults to true. */
+  /**
+   * Whether the file should be publicly readable, overriding the adapter's
+   * default. Adapters that cannot set per-object access ignore it.
+   */
   public?: boolean;
 }
 

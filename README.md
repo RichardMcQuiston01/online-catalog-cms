@@ -98,12 +98,13 @@ Database adapters (SQLite, PostgreSQL, MySQL/MariaDB, Redis, MongoDB) and storag
 
 ```ts
 await catalog.initialize();
-// Creates all tables and runs any pending migrations.
+// Creates all tables and applies the migrations recorded in `occ_migration`
+// that have not run yet, each in its own transaction.
 ```
 
 ### Manual Migrations
 
-The migration SQL is not shipped in the npm package (only `dist/` is published). Download [`001_initial.sql`](https://github.com/RichardMcQuiston01/online-catalog-cms/blob/main/src/adapters/database/relational/migrations/001_initial.sql) from the repository, run it with your preferred tool, then verify:
+The migration SQL is not shipped in the npm package (only `dist/` is published). Download [`001_initial.sql`](https://github.com/RichardMcQuiston01/online-catalog-cms/blob/main/src/adapters/database/relational/migrations/001_initial.sql) from the repository, run it with your preferred tool, then verify. The file records its version in `occ_migration`, so a later `initialize()` skips it and only applies migrations added after it. The file targets SQLite and PostgreSQL (its final `INSERT ... ON CONFLICT` is not valid MySQL, and MySQL needs a differently written schema), so on MySQL or MariaDB let `initialize()` apply the migrations:
 
 ```ts
 const result = await catalog.installer.verify();
@@ -204,7 +205,7 @@ bun run lint        # lint and format check (biome)
 bun run lint:fix    # auto-fix lint/format issues
 ```
 
-Tests live alongside their source files (`*.test.ts`). Every database adapter is meant to pass the shared contract in `src/adapters/database/adapterContract.ts`. It runs for SQLite automatically, and for Redis and MongoDB when `REDIS_URL` / `MONGODB_URL` are set (CI provides both). PostgreSQL and MySQL have no automated tests yet (see [ROADMAP.md](ROADMAP.md)).
+Tests live alongside their source files (`*.test.ts`). Every database adapter is meant to pass the shared contract in `src/adapters/database/adapterContract.ts`. It runs for SQLite automatically, and for the other databases when their connection settings are set: `REDIS_URL`, `MONGODB_URL`, `DATABASE_URL` (PostgreSQL) and `MYSQL_HOST` with `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD` and `MYSQL_DATABASE`. CI starts all four services. The PostgreSQL and MySQL tests drop and recreate the `occ_*` tables, so point them at a scratch database.
 
 ### Releasing
 

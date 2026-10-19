@@ -21,16 +21,26 @@ import type {
   UpdateProductInput,
 } from '../../../types/product.js';
 import {
+  resolveCategoryFilter,
+  resolveProductFilter,
+} from '../../../utils/listFilter.js';
+import {
   mergeCategoryUpdate,
   mergeProductUpdate,
 } from '../../../utils/merge.js';
 import { generateSlug } from '../../../utils/slug.js';
+import {
+  type ConnectionErrorHandler,
+  resolveErrorHandler,
+} from '../errorHandler.js';
 
 export interface MongoDBConfig {
   /** MongoDB connection string, e.g. 'mongodb://localhost:27017'. */
   url: string;
   /** Database name. Defaults to 'online_catalog'. */
   database?: string;
+  /** Called with client-level errors. Defaults to logging with `console.error`. */
+  onError?: ConnectionErrorHandler;
 }
 
 type MongoClient = import('mongodb').MongoClient;
@@ -111,6 +121,7 @@ function containsPattern(search: string): { $regex: string; $options: string } {
 export class MongoDBAdapter implements DatabaseAdapter {
   private readonly client: MongoClient;
   private readonly dbName: string;
+  private readonly onError: ConnectionErrorHandler;
 
   readonly products: ProductRepository;
   readonly categories: CategoryRepository;
@@ -119,6 +130,8 @@ export class MongoDBAdapter implements DatabaseAdapter {
   constructor(config: MongoDBConfig) {
     const MongoClient = loadDriver();
     this.client = new MongoClient(config.url);
+    this.onError = resolveErrorHandler('MongoDB', config.onError);
+    this.client.on('error', this.onError);
     this.dbName = config.database ?? 'online_catalog';
 
     const db = () => this.client.db(this.dbName);
@@ -148,9 +161,14 @@ export class MongoDBAdapter implements DatabaseAdapter {
       await this.client.db(this.dbName).command({ ping: 1 });
       return { ok: true, issues: [] };
     } catch (err) {
+      // The driver error can name the server address; keep it out of the
+      // result, which callers may render, and report it to the error handler.
+      this.onError(err instanceof Error ? err : new Error(String(err)));
       return {
         ok: false,
-        issues: [`MongoDB connection failed: ${String(err)}`],
+        issues: [
+          'MongoDB connection failed. Check the server log for details.',
+        ],
       };
     }
   }
@@ -231,6 +249,11 @@ class MongoProductRepository implements ProductRepository {
     return this.toProduct(doc);
   }
 
+  async getBySlug(slug: string): Promise<Product | null> {
+    const doc = await this.col().findOne({ slug: String(slug) });
+    return doc ? this.toProduct(doc) : null;
+  }
+
   async update(id: string, input: UpdateProductInput): Promise<Product> {
     const existing = await this.get(id);
     if (!existing) throw new Error(`Product not found: ${id}`);
@@ -248,13 +271,25 @@ class MongoProductRepository implements ProductRepository {
     return updated;
   }
 
-  /** Also deletes the product's images, like the SQL `ON DELETE CASCADE`. */
+  /**
+   * Also deletes the product's images, like the SQL `ON DELETE CASCADE`.
+   * The product goes first: standalone MongoDB has no multi-document
+   * transactions, and if the second step fails the leftover image documents
+   * are unreachable (nothing lists a missing product's images) and a retry
+   * removes them, whereas the reverse order would leave a product that has
+   * lost its images.
+   */
   async delete(id: string): Promise<void> {
-    await this.imgCol().deleteMany({ productId: id });
     await this.col().deleteOne({ _id: id });
+    await this.imgCol().deleteMany({ productId: id });
   }
 
-  async list(filter: ProductFilter = {}): Promise<Product[]> {
+  async list(input: ProductFilter = {}): Promise<Product[]> {
+    // Values are checked to be plain strings and numbers, so none of them
+    // can smuggle in a query operator such as `{ $ne: null }`.
+    const filter = resolveProductFilter(input);
+    if (filter.limit === 0) return [];
+
     // biome-ignore lint/suspicious/noExplicitAny: mongo filter type
     const query: any = {};
     if (filter.categoryId !== undefined) query.categoryId = filter.categoryId;
@@ -268,9 +303,11 @@ class MongoProductRepository implements ProductRepository {
       query.$or = [{ name: pattern }, { sku: pattern }];
     }
 
-    let cursor = this.col().find(query).sort({ createdAt: -1 });
-    if (filter.offset) cursor = cursor.skip(filter.offset);
-    if (filter.limit) cursor = cursor.limit(filter.limit);
+    const cursor = this.col()
+      .find(query)
+      .sort({ createdAt: -1 })
+      .skip(filter.offset)
+      .limit(filter.limit);
 
     return this.toProducts(await cursor.toArray());
   }
@@ -316,6 +353,11 @@ class MongoCategoryRepository implements CategoryRepository {
     return doc ? this.toCategory(doc) : null;
   }
 
+  async getBySlug(slug: string): Promise<Category | null> {
+    const doc = await this.col().findOne({ slug: String(slug) });
+    return doc ? this.toCategory(doc) : null;
+  }
+
   async update(id: string, input: UpdateCategoryInput): Promise<Category> {
     const existing = await this.get(id);
     if (!existing) throw new Error(`Category not found: ${id}`);
@@ -348,7 +390,10 @@ class MongoCategoryRepository implements CategoryRepository {
     await this.col().deleteOne({ _id: id });
   }
 
-  async list(filter: CategoryFilter = {}): Promise<Category[]> {
+  async list(input: CategoryFilter = {}): Promise<Category[]> {
+    const filter = resolveCategoryFilter(input);
+    if (filter.limit === 0) return [];
+
     // biome-ignore lint/suspicious/noExplicitAny: mongo filter type
     const query: any = {};
     if (filter.parentId !== undefined) query.parentId = filter.parentId;
@@ -356,9 +401,11 @@ class MongoCategoryRepository implements CategoryRepository {
       query.name = containsPattern(filter.search);
     }
 
-    let cursor = this.col().find(query).sort({ name: 1 });
-    if (filter.offset) cursor = cursor.skip(filter.offset);
-    if (filter.limit) cursor = cursor.limit(filter.limit);
+    const cursor = this.col()
+      .find(query)
+      .sort({ name: 1 })
+      .skip(filter.offset)
+      .limit(filter.limit);
 
     const docs = await cursor.toArray();
     return docs.map((doc) => this.toCategory(doc));

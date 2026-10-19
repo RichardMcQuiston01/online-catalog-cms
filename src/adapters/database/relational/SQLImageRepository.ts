@@ -3,13 +3,14 @@ import type { ImageRepository } from '../../../interfaces/DatabaseAdapter.js';
 import type { CreateImageInput, Image } from '../../../types/image.js';
 import type { SQLRunner } from './BaseSQLAdapter.js';
 import { type ImageRow, imageFromRow } from './rowMappers.js';
+import { toDbTimestamp } from './sqlHelpers.js';
 
 export class SQLImageRepository implements ImageRepository {
   constructor(private readonly db: SQLRunner) {}
 
   async create(input: CreateImageInput): Promise<Image> {
     const id = randomUUID();
-    const now = new Date().toISOString();
+    const now = toDbTimestamp(this.db, new Date());
     const sortOrder = input.sortOrder ?? 0;
 
     await this.db.run(
