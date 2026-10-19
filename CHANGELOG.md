@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - `RedisAdapter.verify()` and `MongoDBAdapter.verify()` return a fixed message instead of the driver error, which can contain the server address. The original error goes to `onError`.
+- Storage `delete()` only removes objects whose key has the shape `generateStorageKey` produces (`{uuid}-{safe-name}`). A URL stored through `images.addUrl()` that points under `baseUrl` can no longer delete an arbitrary S3 object or any other file in the upload directory, and URLs with a query string or fragment are ignored.
 
 ### Removed
 - The three unused Python wheels that were committed at the repository root (`dnspython`, `pymongo`, `pymongo_inmemory`), and `*.whl` is now ignored. MongoDB tests keep using the `mongo:7` service container in CI.
