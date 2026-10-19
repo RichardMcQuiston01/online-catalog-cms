@@ -52,14 +52,25 @@ export class SQLProductRepository implements ProductRepository {
   }
 
   async get(id: string): Promise<Product | null> {
+    return this.findOne('id', id);
+  }
+
+  async getBySlug(slug: string): Promise<Product | null> {
+    return this.findOne('slug', slug);
+  }
+
+  private async findOne(
+    column: 'id' | 'slug',
+    value: string,
+  ): Promise<Product | null> {
     const row = await this.db.get<ProductRow>(
-      'SELECT * FROM occ_product WHERE id = ?',
-      [id],
+      `SELECT * FROM occ_product WHERE ${column} = ?`,
+      [value],
     );
     if (!row) return null;
 
-    const imagesByProductId = await loadImagesByProductId(this.db, [id]);
-    return productFromRow(row, imagesByProductId.get(id) ?? []);
+    const imagesByProductId = await loadImagesByProductId(this.db, [row.id]);
+    return productFromRow(row, imagesByProductId.get(row.id) ?? []);
   }
 
   async update(id: string, input: UpdateProductInput): Promise<Product> {

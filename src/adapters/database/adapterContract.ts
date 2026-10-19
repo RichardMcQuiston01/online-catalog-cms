@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { OnlineCatalog } from '../../catalog.js';
+import { SlugConflictError, ValidationError } from '../../errors.js';
 import type { DatabaseAdapter } from '../../interfaces/DatabaseAdapter.js';
 import { document, paragraph, text } from '../../rich-text/builders.js';
 import type { ProductFilter } from '../../types/product.js';
@@ -82,6 +84,16 @@ export function describeDatabaseAdapterContract(
         expect(updated.sku).toBeNull();
         expect(updated.categoryId).toBeNull();
         expect((await db.products.get(product.id))?.categoryId).toBeNull();
+      });
+
+      it('finds a product by slug', async () => {
+        const created = await db.products.create({
+          name: 'Slugged',
+          price: 1,
+          description,
+        });
+        expect(await db.products.getBySlug('slugged')).toEqual(created);
+        expect(await db.products.getBySlug('missing')).toBeNull();
       });
 
       it('returns null for an unknown id and rejects updating one', async () => {
@@ -320,6 +332,12 @@ export function describeDatabaseAdapterContract(
         expect(await db.categories.get(created.id)).toBeNull();
       });
 
+      it('finds a category by slug', async () => {
+        const created = await db.categories.create({ name: 'Slugged Cat' });
+        expect(await db.categories.getBySlug('slugged-cat')).toEqual(created);
+        expect(await db.categories.getBySlug('missing')).toBeNull();
+      });
+
       it('returns null for an unknown id and rejects updating one', async () => {
         expect(await db.categories.get('missing')).toBeNull();
         await expect(
@@ -388,6 +406,260 @@ export function describeDatabaseAdapterContract(
         expect((await db.categories.get(child.id))?.parentId).toBeNull();
         expect((await db.products.get(product.id))?.categoryId).toBeNull();
         expect(await db.products.list({ categoryId: category.id })).toEqual([]);
+      });
+    });
+
+    // The domain rules live in the services, so these run through
+    // OnlineCatalog and every adapter must come out the same.
+    describe('catalog rules', () => {
+      let catalog: OnlineCatalog;
+
+      beforeEach(() => {
+        catalog = new OnlineCatalog({ db });
+      });
+
+      const newProduct = (overrides: Record<string, unknown> = {}) =>
+        catalog.products.create({
+          name: 'Widget',
+          price: 100,
+          description,
+          ...overrides,
+        });
+
+      describe('slugs', () => {
+        it('suffixes the generated slug when the name repeats', async () => {
+          const slugs = [
+            (await newProduct()).slug,
+            (await newProduct()).slug,
+            (await newProduct()).slug,
+          ];
+          expect(slugs).toEqual(['widget', 'widget-2', 'widget-3']);
+
+          const categories = [
+            (await catalog.categories.create({ name: 'Tools' })).slug,
+            (await catalog.categories.create({ name: 'Tools' })).slug,
+          ];
+          expect(categories).toEqual(['tools', 'tools-2']);
+        });
+
+        it('rejects an explicit slug that is already taken', async () => {
+          await newProduct({ slug: 'taken' });
+          await expect(newProduct({ slug: 'taken' })).rejects.toBeInstanceOf(
+            SlugConflictError,
+          );
+          await catalog.categories.create({ name: 'A', slug: 'taken' });
+          await expect(
+            catalog.categories.create({ name: 'B', slug: 'taken' }),
+          ).rejects.toBeInstanceOf(SlugConflictError);
+        });
+
+        it('rejects renaming a slug onto another record, but allows keeping its own', async () => {
+          const first = await newProduct({ slug: 'first' });
+          await newProduct({ slug: 'second' });
+
+          await expect(
+            catalog.products.update(first.id, { slug: 'second' }),
+          ).rejects.toBeInstanceOf(SlugConflictError);
+          expect(
+            (await catalog.products.update(first.id, { slug: 'first' })).slug,
+          ).toBe('first');
+          expect(
+            (await catalog.products.update(first.id, { slug: 'third' })).slug,
+          ).toBe('third');
+          // The old slug is free again.
+          expect((await newProduct({ slug: 'first' })).slug).toBe('first');
+        });
+
+        it('keeps non-ASCII names meaningful and refuses empty slugs', async () => {
+          expect((await newProduct({ name: 'Café Latte' })).slug).toBe(
+            'cafe-latte',
+          );
+          expect((await newProduct({ name: '日本語' })).slug).toBe('日本語');
+          await expect(newProduct({ name: '!!!' })).rejects.toThrow(
+            'no letters or digits',
+          );
+        });
+
+        it('rejects malformed explicit slugs', async () => {
+          for (const slug of ['', 'has space', 'a/b', 'x'.repeat(256)]) {
+            await expect(newProduct({ slug })).rejects.toBeInstanceOf(
+              ValidationError,
+            );
+          }
+        });
+
+        it('looks products and categories up by slug through the services', async () => {
+          const product = await newProduct({ slug: 'by-slug' });
+          const category = await catalog.categories.create({ name: 'Cat' });
+          expect((await catalog.products.getBySlug('by-slug'))?.id).toBe(
+            product.id,
+          );
+          expect((await catalog.categories.getBySlug('cat'))?.id).toBe(
+            category.id,
+          );
+        });
+      });
+
+      describe('numbers, lengths and metadata', () => {
+        it('accepts only non-negative integer prices', async () => {
+          for (const price of [
+            Number.NaN,
+            Number.POSITIVE_INFINITY,
+            -1,
+            1.5,
+            '5' as unknown as number,
+          ]) {
+            await expect(newProduct({ price })).rejects.toThrow(
+              'price must be',
+            );
+          }
+          expect((await newProduct({ price: 0 })).price).toBe(0);
+        });
+
+        it('does not let an update overwrite a price with NaN', async () => {
+          const product = await newProduct();
+          await expect(
+            catalog.products.update(product.id, { price: Number.NaN }),
+          ).rejects.toBeInstanceOf(ValidationError);
+          expect((await catalog.products.get(product.id))?.price).toBe(100);
+        });
+
+        it('limits name, sku and alt text to their column sizes', async () => {
+          await expect(newProduct({ name: 'x'.repeat(256) })).rejects.toThrow(
+            'name must be at most 255',
+          );
+          await expect(newProduct({ name: '   ' })).rejects.toThrow(
+            'name must not be empty',
+          );
+          await expect(newProduct({ sku: 'x'.repeat(256) })).rejects.toThrow(
+            'sku must be at most 255',
+          );
+
+          const product = await newProduct();
+          await expect(
+            catalog.images.addUrl({
+              productId: product.id,
+              url: 'https://example.com/a.jpg',
+              altText: 'x'.repeat(501),
+            }),
+          ).rejects.toThrow('altText must be at most 500');
+        });
+
+        it('rejects metadata keys MongoDB cannot store, on every adapter', async () => {
+          for (const metadata of [
+            { $set: 1 },
+            { 'a.b': 1 },
+            { nested: { $gt: 1 } },
+            { list: [{ 'x.y': 1 }] },
+          ]) {
+            await expect(newProduct({ metadata })).rejects.toThrow(
+              /has the key/,
+            );
+          }
+        });
+
+        it('rejects metadata that is not plain JSON data', async () => {
+          const circular: Record<string, unknown> = {};
+          circular.self = circular;
+          for (const metadata of [circular, [], 'text', null]) {
+            await expect(
+              newProduct({ metadata: metadata as never }),
+            ).rejects.toBeInstanceOf(ValidationError);
+          }
+          await expect(
+            newProduct({ metadata: { big: 'x'.repeat(70_000) } }),
+          ).rejects.toThrow('over the 65536 limit');
+        });
+
+        it('stores metadata as JSON on every adapter', async () => {
+          const product = await newProduct({
+            metadata: { when: new Date(0), skip: undefined, n: 1 },
+          });
+          expect(product.metadata).toEqual({
+            when: '1970-01-01T00:00:00.000Z',
+            n: 1,
+          });
+        });
+      });
+
+      describe('references', () => {
+        it('requires the category of a product to exist', async () => {
+          await expect(newProduct({ categoryId: 'missing' })).rejects.toThrow(
+            'Category not found: missing',
+          );
+
+          const product = await newProduct();
+          await expect(
+            catalog.products.update(product.id, { categoryId: 'missing' }),
+          ).rejects.toThrow('Category not found');
+
+          const category = await catalog.categories.create({ name: 'Real' });
+          expect(
+            (await newProduct({ categoryId: category.id })).categoryId,
+          ).toBe(category.id);
+        });
+
+        it('requires the product of an image to exist', async () => {
+          await expect(
+            catalog.images.addUrl({
+              productId: 'missing',
+              url: 'https://example.com/a.jpg',
+              altText: '',
+            }),
+          ).rejects.toThrow('Product not found: missing');
+        });
+
+        it('rejects image URLs that are not http(s) or root-relative', async () => {
+          const product = await newProduct();
+          await expect(
+            catalog.images.addUrl({
+              productId: product.id,
+              url: 'javascript:alert(1)',
+              altText: '',
+            }),
+          ).rejects.toThrow('url must be an http(s) URL');
+        });
+
+        it('requires the parent of a category to exist', async () => {
+          await expect(
+            catalog.categories.create({ name: 'Orphan', parentId: 'missing' }),
+          ).rejects.toThrow('Parent category not found: missing');
+        });
+
+        it('rejects a category that is its own parent', async () => {
+          const category = await catalog.categories.create({ name: 'Solo' });
+          await expect(
+            catalog.categories.update(category.id, { parentId: category.id }),
+          ).rejects.toThrow('cannot be its own parent');
+        });
+
+        it('rejects a parent that is already a descendant', async () => {
+          const a = await catalog.categories.create({ name: 'A' });
+          const b = await catalog.categories.create({
+            name: 'B',
+            parentId: a.id,
+          });
+          const c = await catalog.categories.create({
+            name: 'C',
+            parentId: b.id,
+          });
+
+          await expect(
+            catalog.categories.update(a.id, { parentId: c.id }),
+          ).rejects.toThrow('its own ancestor');
+          await expect(
+            catalog.categories.update(a.id, { parentId: b.id }),
+          ).rejects.toThrow('its own ancestor');
+          // Re-parenting along the tree is still fine.
+          expect(
+            (await catalog.categories.update(c.id, { parentId: a.id }))
+              .parentId,
+          ).toBe(a.id);
+          expect(
+            (await catalog.categories.update(c.id, { parentId: null }))
+              .parentId,
+          ).toBeNull();
+        });
       });
     });
   });

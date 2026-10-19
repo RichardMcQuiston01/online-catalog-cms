@@ -54,6 +54,14 @@ export class SQLCategoryRepository implements CategoryRepository {
     return row ? categoryFromRow(row) : null;
   }
 
+  async getBySlug(slug: string): Promise<Category | null> {
+    const row = await this.db.get<CategoryRow>(
+      'SELECT * FROM occ_category WHERE slug = ?',
+      [slug],
+    );
+    return row ? categoryFromRow(row) : null;
+  }
+
   async update(id: string, input: UpdateCategoryInput): Promise<Category> {
     const existing = await this.get(id);
     if (!existing) throw new Error(`Category not found: ${id}`);

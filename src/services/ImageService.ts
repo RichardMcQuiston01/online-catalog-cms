@@ -1,8 +1,14 @@
 import type { Readable } from 'node:stream';
 import { ValidationError } from '../errors.js';
-import type { ImageRepository, StorageAdapter } from '../interfaces/index.js';
+import type {
+  ImageRepository,
+  ProductRepository,
+  StorageAdapter,
+} from '../interfaces/index.js';
 import type { CreateImageInput, Image } from '../types/index.js';
 import { sniffImageType } from '../utils/imageType.js';
+import { isSafeUrl } from '../utils/url.js';
+import { MAX_ALT_TEXT_LENGTH, assertSortOrder, assertText } from './rules.js';
 
 /** Default cap on a single uploaded image: 10 MiB. */
 export const DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -20,11 +26,17 @@ export interface UploadImageInput {
 export interface ImageServiceOptions {
   /** Largest accepted upload in bytes. Defaults to 10 MiB. */
   maxUploadBytes?: number;
+  /** When set, `productId` must refer to an existing product. */
+  products?: ProductRepository;
 }
+
+/** Longest accepted image URL. */
+const MAX_URL_LENGTH = 2048;
 
 /** Handles image uploads and associates them with products. */
 export class ImageService {
   private readonly maxUploadBytes: number;
+  private readonly products?: ProductRepository;
 
   constructor(
     private readonly repo: ImageRepository,
@@ -32,6 +44,7 @@ export class ImageService {
     options: ImageServiceOptions = {},
   ) {
     this.maxUploadBytes = options.maxUploadBytes ?? DEFAULT_MAX_UPLOAD_BYTES;
+    this.products = options.products;
   }
 
   /**
@@ -49,6 +62,12 @@ export class ImageService {
         'A storage adapter must be configured on OnlineCatalog to upload images.',
       );
     }
+
+    const altText = assertText('altText', input.altText, MAX_ALT_TEXT_LENGTH, {
+      allowEmpty: true,
+    });
+    const sortOrder = this.readSortOrder(input.sortOrder);
+    await this.assertProductExists(input.productId);
 
     const bytes = await readWithinLimit(input.file, this.maxUploadBytes);
     const imageType = sniffImageType(bytes);
@@ -69,8 +88,8 @@ export class ImageService {
       return await this.repo.create({
         productId: input.productId,
         url,
-        altText: input.altText,
-        sortOrder: input.sortOrder,
+        altText,
+        sortOrder,
       });
     } catch (error) {
       // Don't leave an orphaned file behind when the record can't be saved.
@@ -81,7 +100,23 @@ export class ImageService {
 
   /** Associate an already-hosted image URL with a product. */
   async addUrl(input: CreateImageInput): Promise<Image> {
-    return this.repo.create(input);
+    if (
+      typeof input.url !== 'string' ||
+      input.url.length > MAX_URL_LENGTH ||
+      !isSafeUrl(input.url)
+    ) {
+      throw new ValidationError(
+        `url must be an http(s) URL or a root-relative path such as "/uploads/photo.jpg", at most ${MAX_URL_LENGTH} characters.`,
+        'url',
+      );
+    }
+    const altText = assertText('altText', input.altText, MAX_ALT_TEXT_LENGTH, {
+      allowEmpty: true,
+    });
+    const sortOrder = this.readSortOrder(input.sortOrder);
+    await this.assertProductExists(input.productId);
+
+    return this.repo.create({ ...input, altText, sortOrder });
   }
 
   async get(id: string): Promise<Image | null> {
@@ -101,6 +136,25 @@ export class ImageService {
 
   async listByProduct(productId: string): Promise<Image[]> {
     return this.repo.listByProduct(productId);
+  }
+
+  private readSortOrder(sortOrder: unknown): number | undefined {
+    return sortOrder === undefined ? undefined : assertSortOrder(sortOrder);
+  }
+
+  private async assertProductExists(productId: string): Promise<void> {
+    if (typeof productId !== 'string') {
+      throw new ValidationError(
+        `productId must be a string, received ${typeof productId}.`,
+        'productId',
+      );
+    }
+    if (this.products && !(await this.products.get(productId))) {
+      throw new ValidationError(
+        `Product not found: ${productId}. Create the product before adding images to it.`,
+        'productId',
+      );
+    }
   }
 }
 

@@ -22,6 +22,8 @@ export interface VerificationResult {
 export interface ProductRepository {
   create(input: CreateProductInput): Promise<Product>;
   get(id: string): Promise<Product | null>;
+  /** Finds a product by its unique slug, or null. */
+  getBySlug(slug: string): Promise<Product | null>;
   update(id: string, input: UpdateProductInput): Promise<Product>;
   delete(id: string): Promise<void>;
   list(filter?: ProductFilter): Promise<Product[]>;
@@ -31,6 +33,8 @@ export interface ProductRepository {
 export interface CategoryRepository {
   create(input: CreateCategoryInput): Promise<Category>;
   get(id: string): Promise<Category | null>;
+  /** Finds a category by its unique slug, or null. */
+  getBySlug(slug: string): Promise<Category | null>;
   update(id: string, input: UpdateCategoryInput): Promise<Category>;
   delete(id: string): Promise<void>;
   list(filter?: CategoryFilter): Promise<Category[]>;

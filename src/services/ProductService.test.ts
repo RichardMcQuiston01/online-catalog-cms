@@ -16,6 +16,7 @@ function createRepo(): ProductRepository & { writes: number } {
       return {} as never;
     },
     get: async () => null,
+    getBySlug: async () => null,
     delete: async () => {},
     list: async () => [],
   };
