@@ -5,6 +5,17 @@ import { type ImageRow, imageFromRow } from './rowMappers.js';
 /** Rows per `IN (...)` query, kept under each driver's bind-parameter cap. */
 const IN_CLAUSE_CHUNK_SIZE = 500;
 
+/**
+ * The value to bind for a timestamp column. PostgreSQL (`timestamptz`) and
+ * MySQL (`DATETIME(3)`, pool in UTC) take a `Date` and store the instant;
+ * binding an ISO string instead is rejected by strict MySQL and read back
+ * shifted by the host's offset on PostgreSQL. SQLite has no date type and
+ * stores the ISO string, which round-trips exactly.
+ */
+export function toDbTimestamp(db: SQLRunner, date: Date): string | Date {
+  return db.dialect === 'sqlite' ? date.toISOString() : date;
+}
+
 /** Joins conditions into a `WHERE` clause, or '' when there are none. */
 export function buildWhereClause(conditions: string[]): string {
   return conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

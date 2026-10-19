@@ -43,6 +43,8 @@ export function toNumberedPlaceholders(query: string): string {
 }
 
 class PostgresSQLRunner implements SQLRunner {
+  readonly dialect = 'postgres' as const;
+
   constructor(private readonly sql: Sql) {}
 
   async transaction<T>(work: (tx: SQLRunner) => Promise<T>): Promise<T> {

@@ -104,7 +104,7 @@ await catalog.initialize();
 
 ### Manual Migrations
 
-The migration SQL is not shipped in the npm package (only `dist/` is published). Download [`001_initial.sql`](https://github.com/RichardMcQuiston01/online-catalog-cms/blob/main/src/adapters/database/relational/migrations/001_initial.sql) from the repository, run it with your preferred tool, then verify. The file records its version in `occ_migration`, so a later `initialize()` skips it and only applies migrations added after it:
+The migration SQL is not shipped in the npm package (only `dist/` is published). Download [`001_initial.sql`](https://github.com/RichardMcQuiston01/online-catalog-cms/blob/main/src/adapters/database/relational/migrations/001_initial.sql) from the repository, run it with your preferred tool, then verify. The file records its version in `occ_migration`, so a later `initialize()` skips it and only applies migrations added after it. The file targets SQLite and PostgreSQL (its final `INSERT ... ON CONFLICT` is not valid MySQL, and MySQL needs a differently written schema), so on MySQL or MariaDB let `initialize()` apply the migrations:
 
 ```ts
 const result = await catalog.installer.verify();

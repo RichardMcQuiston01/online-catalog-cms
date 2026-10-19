@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `getBySlug(slug)` on `products` and `categories` (services and repositories), so a storefront can resolve a URL without listing the table.
 - `ValidationError` and `SlugConflictError`. The services now own the domain rules, so every adapter behaves the same: non-negative integer `price`; `name`/`sku` length (255) and `altText` length (500); `metadata` must be plain JSON, at most 65,536 characters, without `$`-prefixed or dotted keys, and is stored as normalized JSON; image `url`s must be `http(s)` or root-relative. See docs/API.md.
 - `verify()` on the SQL adapters reports when the schema is behind the migrations this version needs, and `initialize()` refuses a database migrated by a newer version of the package.
+- Migration 2 adds indexes on `occ_product(category_id)`, `occ_category(parent_id)` and `occ_image(product_id, sort_order)` (MySQL already indexes the foreign keys), so category filters, the category tree and `images.listByProduct` no longer scan whole tables. It applies the next time `initialize()` runs.
+- PostgreSQL adapter contract and upgrade tests (run when `DATABASE_URL` is set), including a test that timestamps round-trip in any time zone.
 
 ### Changed
 - **Breaking for S3 users who relied on the default:** `S3Adapter` now defaults `publicRead` to `false` and sends no `ACL` unless `publicRead: true` (or a per-upload `public: true`) is set. Set `publicRead: true` to keep the old behavior on buckets that still allow ACLs.
@@ -33,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Searching with `%` or `_` matches those characters literally on the SQL adapters instead of acting as wildcards, and PostgreSQL search is now case-insensitive like the other adapters.
 - Slugs: `Café Latte` becomes `cafe-latte` instead of `caf-latte`, non-Latin names keep their letters instead of becoming an empty slug, slugs are capped at 255 characters, an empty slug is rejected with a clear error, and a duplicate name gets `-2`, `-3`, ... instead of a raw driver error. Redis now enforces slug uniqueness (`SET NX` index, backfilled on `initialize()`).
 - Category trees can no longer cycle: a category cannot be its own parent or the parent of one of its ancestors, and `parentId`, a product's `categoryId` and an image's `productId` must exist on every adapter, as the SQL foreign keys already required.
+- PostgreSQL timestamps no longer shift by the host's UTC offset: columns are `timestamptz` and `Date` values are bound as instants. Migration 2 converts existing columns, treating the stored values as UTC.
+- MySQL: inserts no longer fail in strict mode on the trailing `Z` of an ISO timestamp, and milliseconds are kept (`DATETIME(3)`, pool in UTC). The MySQL schema now declares real foreign keys (MySQL ignores inline `REFERENCES`) and no longer gives `TEXT` columns a literal default (rejected by MySQL), so `ON DELETE CASCADE`/`SET NULL` work and the migration runs at all.
 
 ### Security
 - `RedisAdapter.verify()` and `MongoDBAdapter.verify()` return a fixed message instead of the driver error, which can contain the server address. The original error goes to `onError`.

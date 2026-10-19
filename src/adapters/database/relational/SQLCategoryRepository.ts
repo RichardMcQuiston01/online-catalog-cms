@@ -16,6 +16,7 @@ import {
   buildPaginationClause,
   buildWhereClause,
   containsPattern,
+  toDbTimestamp,
 } from './sqlHelpers.js';
 
 export class SQLCategoryRepository implements CategoryRepository {
@@ -23,7 +24,7 @@ export class SQLCategoryRepository implements CategoryRepository {
 
   async create(input: CreateCategoryInput): Promise<Category> {
     const id = randomUUID();
-    const now = new Date().toISOString();
+    const now = toDbTimestamp(this.db, new Date());
     const slug = input.slug ?? generateSlug(input.name);
 
     await this.db.run(
@@ -67,7 +68,7 @@ export class SQLCategoryRepository implements CategoryRepository {
     if (!existing) throw new Error(`Category not found: ${id}`);
 
     const fields = mergeCategoryUpdate(existing, input);
-    const now = new Date().toISOString();
+    const now = toDbTimestamp(this.db, new Date());
     await this.db.run(
       `UPDATE occ_category SET
          name       = ?,

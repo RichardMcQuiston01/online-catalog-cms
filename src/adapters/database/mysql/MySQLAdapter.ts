@@ -33,14 +33,15 @@ export interface MySQLConfig {
 }
 
 type Pool = import('mysql2/promise').Pool;
+type PoolConfig = Omit<MySQLConfig, 'onError'> & { timezone?: string };
 
 function loadDriver(): {
-  createPool: (config: Omit<MySQLConfig, 'onError'>) => Pool;
+  createPool: (config: PoolConfig) => Pool;
 } {
   try {
     const require = createRequire(import.meta.url);
     return require('mysql2/promise') as {
-      createPool: (config: Omit<MySQLConfig, 'onError'>) => Pool;
+      createPool: (config: PoolConfig) => Pool;
     };
   } catch {
     throw new Error('mysql2 is not installed. Run: bun add mysql2');
@@ -57,6 +58,8 @@ interface Executor {
 
 /** mysql2 types bind parameters as `any[]`, hence the casts below. */
 class MySQLSQLRunner implements SQLRunner {
+  readonly dialect = 'mysql' as const;
+
   constructor(
     private readonly executor: Executor,
     private readonly pool?: Pool,
@@ -108,7 +111,8 @@ export class MySQLAdapter extends BaseSQLAdapter implements DatabaseAdapter {
     super();
     const { createPool } = loadDriver();
     const { onError, ...poolConfig } = config;
-    this.pool = createPool(poolConfig);
+    // UTC makes the Date values bound to DATETIME(3) columns unambiguous.
+    this.pool = createPool({ timezone: 'Z', ...poolConfig });
     // Without a listener, an `error` event on the pool exits the process.
     (this.pool as unknown as EventEmitter).on(
       'error',

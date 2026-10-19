@@ -39,6 +39,8 @@ async function runInTransaction<T>(
 }
 
 class BunSQLiteRunner implements SQLRunner {
+  readonly dialect = 'sqlite' as const;
+
   // biome-ignore lint/suspicious/noExplicitAny: bun:sqlite Database type
   constructor(private readonly db: any) {}
 
@@ -60,6 +62,8 @@ class BunSQLiteRunner implements SQLRunner {
 }
 
 class BetterSqliteRunner implements SQLRunner {
+  readonly dialect = 'sqlite' as const;
+
   // biome-ignore lint/suspicious/noExplicitAny: better-sqlite3 Database type
   constructor(private readonly db: any) {}
 
@@ -125,6 +129,8 @@ async function createSQLiteInstance(filename: string): Promise<SQLiteInstance> {
  * opened once; concurrent first calls share the same attempt.
  */
 class LazySQLiteRunner implements SQLRunner {
+  readonly dialect = 'sqlite' as const;
+
   private instance?: Promise<SQLiteInstance>;
 
   constructor(private readonly filename: string) {}

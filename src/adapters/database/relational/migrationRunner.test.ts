@@ -32,7 +32,7 @@ describe('migration runner', () => {
 
   it('records each applied version', async () => {
     await adapter.initialize();
-    expect(await versionsApplied(adapter)).toEqual([1]);
+    expect(await versionsApplied(adapter)).toEqual([1, 2]);
     await adapter.close();
   });
 
@@ -53,21 +53,21 @@ describe('migration runner', () => {
     await adapter.initialize();
     adapter.extra = [
       {
+        version: 4,
+        description: 'fourth',
+        statements: ['CREATE TABLE occ_fourth (id INTEGER)'],
+      },
+      {
         version: 3,
         description: 'third',
         statements: ['CREATE TABLE occ_third (id INTEGER)'],
-      },
-      {
-        version: 2,
-        description: 'second',
-        statements: ['CREATE TABLE occ_second (id INTEGER)'],
       },
     ].sort((a, b) => a.version - b.version);
 
     await adapter.initialize();
     await adapter.initialize();
 
-    expect(await versionsApplied(adapter)).toEqual([1, 2, 3]);
+    expect(await versionsApplied(adapter)).toEqual([1, 2, 3, 4]);
     await adapter.close();
   });
 
@@ -75,7 +75,7 @@ describe('migration runner', () => {
     await adapter.initialize();
     adapter.extra = [
       {
-        version: 2,
+        version: 3,
         description: 'semicolons',
         statements: [
           'CREATE TABLE occ_note (text TEXT)',
@@ -96,7 +96,7 @@ describe('migration runner', () => {
     await adapter.initialize();
     adapter.extra = [
       {
-        version: 2,
+        version: 3,
         description: 'broken',
         statements: ['CREATE TABLE occ_half (id INTEGER)', 'THIS IS NOT SQL'],
       },
@@ -104,7 +104,7 @@ describe('migration runner', () => {
 
     await expect(adapter.initialize()).rejects.toThrow();
 
-    expect(await versionsApplied(adapter)).toEqual([1]);
+    expect(await versionsApplied(adapter)).toEqual([1, 2]);
     expect(
       await adapter.query(
         "SELECT name FROM sqlite_master WHERE name = 'occ_half'",
@@ -129,7 +129,7 @@ describe('migration runner', () => {
     await adapter.initialize();
     adapter.extra = [
       {
-        version: 2,
+        version: 3,
         description: 'pending',
         statements: ['CREATE TABLE occ_pending (id INTEGER)'],
       },
@@ -138,7 +138,7 @@ describe('migration runner', () => {
     const verification = await adapter.verify();
 
     expect(verification.ok).toBe(false);
-    expect(verification.issues[0]).toContain('Schema is at migration 1');
+    expect(verification.issues[0]).toContain('Schema is at migration 2');
     await adapter.close();
   });
 
@@ -156,7 +156,8 @@ describe('migration runner', () => {
 
     await adapter.initialize();
 
-    expect(await versionsApplied(adapter)).toEqual([1]);
+    // Version 1 is not replayed; the later migrations catch it up.
+    expect(await versionsApplied(adapter)).toEqual([1, 2]);
     expect((await adapter.verify()).ok).toBe(true);
     await adapter.close();
   });

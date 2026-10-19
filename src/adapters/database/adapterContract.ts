@@ -45,6 +45,53 @@ export function describeDatabaseAdapterContract(
       expect(await db.verify()).toEqual({ ok: true, issues: [] });
     });
 
+    describe('timestamps', () => {
+      it('round-trips the instant an entity was written, in any time zone', async () => {
+        const before = Date.now();
+        const category = await db.categories.create({ name: 'Clock' });
+        const product = await db.products.create({
+          name: 'Clock',
+          price: 1,
+          description,
+        });
+        const image = await db.images.create({
+          productId: product.id,
+          url: '/a.jpg',
+          altText: '',
+        });
+        const after = Date.now();
+
+        // A wall-clock timestamp read back in another zone is off by hours.
+        for (const date of [
+          category.createdAt,
+          category.updatedAt,
+          product.createdAt,
+          product.updatedAt,
+          image.createdAt,
+        ]) {
+          expect(date.getTime()).toBeGreaterThanOrEqual(before - 1000);
+          expect(date.getTime()).toBeLessThanOrEqual(after + 1000);
+        }
+
+        const reread = await db.products.get(product.id);
+        expect(reread?.createdAt.getTime()).toBe(product.createdAt.getTime());
+      });
+
+      it('keeps millisecond precision', async () => {
+        const created = await db.categories.create({ name: 'Precise' });
+        // updatedAt is set from the same Date; a driver that drops fractions
+        // would make every timestamp a whole second.
+        const stamps = new Set<number>();
+        for (const name of ['p1', 'p2', 'p3', 'p4', 'p5', 'p6']) {
+          const c = await db.categories.create({ name });
+          stamps.add(c.createdAt.getTime() % 1000);
+          await pause();
+        }
+        expect(created.createdAt.getTime()).toBeGreaterThan(0);
+        expect(stamps.size).toBeGreaterThan(1);
+      });
+    });
+
     describe('products', () => {
       it('creates, gets and updates a product', async () => {
         const created = await db.products.create({
