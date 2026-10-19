@@ -88,14 +88,6 @@ import { S3Adapter } from "@richardmcquiston01/online-catalog-cms/storage/s3";
 
 Importing the adapters from the package root still works.
 
-## Buy Me a Coffee
-
-If this app, code, or repository has helped you or someone you know, please consider donating. I appreciate any help to offset the costs of development and/or AI Credits.
-
-[**Donate via Stripe**](https://donate.stripe.com/00w5kD3Gj1Xo9v7gVOcs800), or scan:
-
-[![Donate via Stripe](./donate.svg)](https://donate.stripe.com/00w5kD3Gj1Xo9v7gVOcs800)
-
 ## Adapters
 
 Database adapters (SQLite, PostgreSQL, MySQL/MariaDB, Redis, MongoDB) and storage adapters (local disk, S3-compatible, external URL) all implement the same `DatabaseAdapter` / `StorageAdapter` interfaces, so you can swap them without changing any business logic. See [docs/ADAPTERS.md](docs/ADAPTERS.md) for configuration examples for each.
@@ -234,3 +226,11 @@ Apache 2.0
 ## Copyright
 
 Copyright 2026 Richard McQuiston <richard@mcqsoft.com>
+
+## Buy Me a Coffee
+
+If this app, code, or repository has helped you or someone you know, please consider donating. I appreciate any help to offset the costs of development and/or AI Credits.
+
+[**Donate via Stripe**](https://donate.stripe.com/00w5kD3Gj1Xo9v7gVOcs800), or scan:
+
+[![Donate via Stripe](./donate.svg)](https://donate.stripe.com/00w5kD3Gj1Xo9v7gVOcs800)
