@@ -77,9 +77,14 @@ const image = await catalog.images.upload({
   file: buffer, // Buffer or Readable stream
   filename: "photo.jpg",
   altText: "Product photo",
-  contentType: "image/jpeg", // optional
   sortOrder: 0, // optional
 });
+
+// Uploads accept JPEG, PNG, GIF, WebP and AVIF only. The format is detected
+// from the file's content: the filename extension and any declared content
+// type are ignored, and the stored name and content type follow the detected
+// format. SVG, HTML and other files are rejected with a `ValidationError`, as
+// are files over `maxUploadBytes` (default 10 MiB, set it on `OnlineCatalog`).
 
 // Read one image (resolves to null if not found)
 const found = await catalog.images.get(image.id);
