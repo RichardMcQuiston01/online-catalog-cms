@@ -15,7 +15,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    # Live services let the Redis and MongoDB adapter tests run instead of skipping.
+    # Live services let the database adapter contract tests run instead of skipping.
     services:
       redis:
         image: redis:7
@@ -35,9 +35,38 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: mysql
+          MYSQL_DATABASE: occ_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pmysql"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       REDIS_URL: redis://localhost:6379
       MONGODB_URL: mongodb://localhost:27017
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: mysql
+      MYSQL_DATABASE: occ_test
     steps:
       - name: Checkout
         uses: actions/checkout@v4

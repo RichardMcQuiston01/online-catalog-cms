@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `verify()` on the SQL adapters reports when the schema is behind the migrations this version needs, and `initialize()` refuses a database migrated by a newer version of the package.
 - Migration 2 adds indexes on `occ_product(category_id)`, `occ_category(parent_id)` and `occ_image(product_id, sort_order)` (MySQL already indexes the foreign keys), so category filters, the category tree and `images.listByProduct` no longer scan whole tables. It applies the next time `initialize()` runs.
 - PostgreSQL adapter contract and upgrade tests (run when `DATABASE_URL` is set), including a test that timestamps round-trip in any time zone.
+- CI runs the shared adapter contract against PostgreSQL 16 and MySQL 8 service containers, next to SQLite, Redis and MongoDB. Set `DATABASE_URL` (PostgreSQL) or `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE` to run them locally.
 
 ### Changed
 - **Breaking for S3 users who relied on the default:** `S3Adapter` now defaults `publicRead` to `false` and sends no `ACL` unless `publicRead: true` (or a per-upload `public: true`) is set. Set `publicRead: true` to keep the old behavior on buckets that still allow ACLs.
