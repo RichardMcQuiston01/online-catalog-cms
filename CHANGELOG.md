@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-19
+
+### Added
+- A `funding` entry in `package.json`, so `npm fund` and the npm package page show a donation link.
+- A "Buy Me a Coffee" section in the README, with a scannable `donate.svg` QR code.
+
 ## [0.2.0] - 2026-10-05
 
 ### Added
