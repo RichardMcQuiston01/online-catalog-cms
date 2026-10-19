@@ -1,4 +1,6 @@
+import { ValidationError } from '../errors.js';
 import type { ProductRepository, StorageAdapter } from '../interfaces/index.js';
+import { assertRichTextDocument } from '../rich-text/validate.js';
 import type {
   CreateProductInput,
   Product,
@@ -13,7 +15,9 @@ export class ProductService {
     private readonly storage?: StorageAdapter,
   ) {}
 
+  /** @throws ValidationError when `description` is not a valid rich-text document. */
   async create(input: CreateProductInput): Promise<Product> {
+    validateDescription(input.description);
     return this.repo.create(input);
   }
 
@@ -21,7 +25,9 @@ export class ProductService {
     return this.repo.get(id);
   }
 
+  /** @throws ValidationError when `description` is not a valid rich-text document. */
   async update(id: string, input: UpdateProductInput): Promise<Product> {
+    if (input.description !== undefined) validateDescription(input.description);
     return this.repo.update(id, input);
   }
 
@@ -46,5 +52,17 @@ export class ProductService {
 
   async list(filter?: ProductFilter): Promise<Product[]> {
     return this.repo.list(filter);
+  }
+}
+
+/** Rejects a description that is not safe to store and later render. */
+function validateDescription(description: unknown): void {
+  try {
+    assertRichTextDocument(description);
+  } catch (error) {
+    throw new ValidationError(
+      error instanceof Error ? error.message : String(error),
+      'description',
+    );
   }
 }

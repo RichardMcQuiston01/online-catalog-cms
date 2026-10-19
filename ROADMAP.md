@@ -12,5 +12,3 @@ Completed work is tracked in [CHANGELOG.md](CHANGELOG.md). What's left:
 - [ ] Friendlier unique-slug handling: two products or categories with the
       same name hit the `slug` UNIQUE constraint and surface a raw driver
       error. Generate a suffix or throw a descriptive error.
-- [ ] Validate `description` with `assertRichTextDocument` in
-      `ProductService.create`/`update` rather than leaving it to callers.
